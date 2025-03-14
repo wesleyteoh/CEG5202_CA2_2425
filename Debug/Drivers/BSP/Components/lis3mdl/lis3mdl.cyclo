@@ -1,0 +1,5 @@
+../Drivers/BSP/Components/lis3mdl/lis3mdl.c:86:6:LIS3MDL_MagInit	1
+../Drivers/BSP/Components/lis3mdl/lis3mdl.c:98:6:LIS3MDL_MagDeInit	1
+../Drivers/BSP/Components/lis3mdl/lis3mdl.c:119:9:LIS3MDL_MagReadID	1
+../Drivers/BSP/Components/lis3mdl/lis3mdl.c:131:6:LIS3MDL_MagLowPower	2
+../Drivers/BSP/Components/lis3mdl/lis3mdl.c:158:6:LIS3MDL_MagReadXYZ	9

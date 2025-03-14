@@ -1,0 +1,10 @@
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:101:6:LSM6DSL_AccInit	1
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:128:6:LSM6DSL_AccDeInit	1
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:149:9:LSM6DSL_AccReadID	1
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:161:6:LSM6DSL_AccLowPower	2
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:188:6:LSM6DSL_AccReadXYZ	7
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:245:6:LSM6DSL_GyroInit	1
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:273:6:LSM6DSL_GyroDeInit	1
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:294:9:LSM6DSL_GyroReadID	1
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:306:6:LSM6DSL_GyroLowPower	2
+../Drivers/BSP/Components/lsm6dsl/lsm6dsl.c:333:6:LSM6DSL_GyroReadXYZAngRate	7
