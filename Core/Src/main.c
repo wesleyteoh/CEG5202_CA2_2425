@@ -28,6 +28,7 @@
 #include "../../Drivers/BSP/B-L475E-IOT01/stm32l475e_iot01_gyro.h"
 #include "../../Drivers/BSP/B-L475E-IOT01/stm32l475e_iot01_magneto.h"
 #include <time.h>
+#include <stdlib.h>
 #include <stdio.h>
 /* USER CODE END Includes */
 
@@ -76,12 +77,28 @@ static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 /* USER CODE BEGIN PFP */
 
+
 uint8_t HTS221_Temp_Data_Ready(uint16_t DeviceAddr); //Temperature sensor
 uint8_t HTS221_Hum_Data_Ready(uint16_t DeviceAddr); //Humidity sensor
 uint8_t LPS22HB_Data_Ready(uint8_t DeviceAddr); //Pressure sensor
 uint8_t LIS3MDL_Data_Ready(uint8_t DeviceAddr); //Magnetometer sensor
 uint8_t LSM6DSL_Gyro_Data_Ready(uint8_t DeviceAddr); //Gyroscope sensor
 uint8_t LSM6DSL_Acc_Data_Ready(uint8_t DeviceAddr); //Accelerometer sensor
+
+//static void Pressure(void);
+//static void Humidity(void);
+//static void Temperature(void);
+//static void Magnetometer(void);
+//static void Gyroscope(void);
+
+/*
+ * ODR values:
+ *
+ * humidity/temp: 1Hz
+ * accel/gyro: 52Hz
+ * pressure: 25Hz
+ * magnetometer: 40Hz
+ */
 
 extern void initialise_monitor_handles(void);
 /* USER CODE END PFP */
@@ -147,34 +164,112 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  int getRandomDelay(void)
+  {
+      return (rand() % 11) + 10;
+  }
+
+//  Add random error in sensor outputs
+  float getRandomErrorFactor(void)
+  {
+      return ((float)rand() / (float)RAND_MAX) * 0.1f - 0.05f;
+  }
+//  srand(HAL_GetTick());// Seed RNG
+  uint32_t now = HAL_GetTick();
+
+  // Generate an initial random 10-20ms delay for each sensor
+  uint32_t randDelayTempHum   = getRandomDelay();
+  uint32_t randDelayAccelGyro = getRandomDelay();
+  uint32_t randDelayPressure  = getRandomDelay();
+  uint32_t randDelayMagneto   = getRandomDelay();
+
+  // Initialize last poll timestamps to current time plus base period plus random delay.
+  uint32_t lastTempHumPoll   = now + 1000 + randDelayTempHum;  // 1Hz sensor
+  uint32_t lastAccelGyroPoll = now + 19   + randDelayAccelGyro;  // 52Hz sensor
+  uint32_t lastPressurePoll  = now + 40   + randDelayPressure;   // 25Hz sensor
+  uint32_t lastMagnetoPoll   = now + 25   + randDelayMagneto;    // 40Hz sensor
+
+
   while (1)
   {
 
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  //	  To make LED flash
-	HAL_GPIO_TogglePin(GPIOB,GPIO_PIN_14);
-	HAL_GPIO_TogglePin(GPIOC,GPIO_PIN_9);
-	HAL_Delay(1000);
+//	HAL_Delay(1000);
 
-	float accel_data[3];
-	int16_t accel_data_i16[3] = { 0 };			// array to store the x, y and z readings.
-	BSP_ACCELERO_AccGetXYZ(accel_data_i16);		// read accelerometer
-	// the function above returns 16 bit integers which are 100 * acceleration_in_m/s2. Converting to float to print the actual acceleration.
-	accel_data[0] = (float)accel_data_i16[0] / 100.0f;
-	accel_data[1] = (float)accel_data_i16[1] / 100.0f;
-	accel_data[2] = (float)accel_data_i16[2] / 100.0f;
+	uint32_t now = HAL_GetTick();
 
-	float temp_data;
-	temp_data = BSP_TSENSOR_ReadTemp();			// read temperature sensor
+	 // Poll Humidity/Temperature sensor at ~1Hz (1000ms + random 10-20ms)
+	    if (now >= lastTempHumPoll)
+	    {
+	         int randPollDelay = getRandomDelay();
+	         lastTempHumPoll = now + 1000 + randPollDelay;
+	         float temp = BSP_TSENSOR_ReadTemp();
+	         float humidity = BSP_HSENSOR_ReadHumidity();
 
-	float humidity_data;
-	humidity_data = BSP_HSENSOR_ReadHumidity();
+	         // Add error to temperature and humidity readings
+	         float tempError = getRandomErrorFactor();
+	         float humError  = getRandomErrorFactor();
+	         float adjustedTemp = temp * (1.0f + tempError);
+	         float adjustedHumidity = humidity * (1.0f + humError);
 
-	printf("Accel X : %f; Accel Y : %f; Accel Z : %f; Temperature : %f Humidity : %f \r\n", accel_data[0], accel_data[1], accel_data[2], temp_data, humidity_data);
+	         printf("Temperature: %f C, Humidity: %f%%\r\n", temp, humidity);
+	    }
 
-	HAL_Delay(1000);	// read once a ~second.
+	    // Poll Accelerometer/Gyro at ~52Hz (19ms + random 10-20ms)
+	    if (now >= lastAccelGyroPoll)
+	    {
+	         int randPollDelay = getRandomDelay();
+	         lastAccelGyroPoll = now + 19 + randPollDelay;
+	         int16_t accel_data_i16[3] = {0};
+	         BSP_ACCELERO_AccGetXYZ(accel_data_i16);
+	         float accel_data[3];
+	         for (int i = 0; i < 3; i++)
+	         {
+	             float error = getRandomErrorFactor();
+	             accel_data[i] = (accel_data_i16[i] / 100.0f) * (1.0f + error);
+	         }
+	         printf("Accelerometer: X: %f, Y: %f, Z: %f\r\n",
+	                accel_data[0], accel_data[1], accel_data[2]);
+	    }
+
+	    // Poll Pressure sensor at ~25Hz (40ms + random 10-20ms)
+	    if (now >= lastPressurePoll)
+	    {
+	         int randPollDelay = getRandomDelay();
+	         lastPressurePoll = now + 40 + randPollDelay;
+	         float pressure = BSP_PSENSOR_ReadPressure();
+	         float error = getRandomErrorFactor();
+	         float adjustedPressure = pressure * (1.0f + error);
+	         printf("Pressure: %f hPa\r\n", pressure);
+	    }
+
+	    // Poll Magnetometer sensor at ~40Hz (25ms + random 10-20ms)
+	    if (now >= lastMagnetoPoll)
+	    {
+	         int randPollDelay = getRandomDelay();
+	         lastMagnetoPoll = now + 25 + randPollDelay;
+	         int16_t magneto_data[3] = {0};
+	         BSP_MAGNETO_GetXYZ(magneto_data);
+	         float adjustedMagneto[3];
+	         for (int i = 0; i < 3; i++)
+	             {
+	                 float error = getRandomErrorFactor();
+	                 adjustedMagneto[i] = magneto_data[i] * (1.0f + error);
+	             }
+	         printf("Magnetometer: X: %d, Y: %d, Z: %d\r\n",
+	                magneto_data[0], magneto_data[1], magneto_data[2]);
+	    }
+
+	    // Optional: Toggle LEDs for visual feedback.
+//	    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+//	    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
+
+	    // A short delay to avoid a busy loop.
+//	    HAL_Delay(1);// default polling rate
+	    HAL_Delay(100);
+	    printf("=========\r\n");
   }
   /* USER CODE END 3 */
 }
@@ -319,7 +414,7 @@ static void MX_I2C2_Init(void)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN I2C2_Init 2 */
+  /* USER  BEGIN I2C2_Init 2 */
 
   /* USER CODE END I2C2_Init 2 */
 
