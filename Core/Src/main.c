@@ -68,6 +68,8 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 #define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
 #define HIGH_HUMIDITY_THRESHOLD 70.0f
 #define VIBRATION_THRESHOLD    11.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
+
+volatile uint8_t criticalEventFlag = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -90,11 +92,16 @@ uint8_t LIS3MDL_Data_Ready(uint8_t DeviceAddr); //Magnetometer sensor
 uint8_t LSM6DSL_Gyro_Data_Ready(uint8_t DeviceAddr); //Gyroscope sensor
 uint8_t LSM6DSL_Acc_Data_Ready(uint8_t DeviceAddr); //Accelerometer sensor
 
-//static void Pressure(void);
-//static void Humidity(void);
-//static void Temperature(void);
-//static void Magnetometer(void);
-//static void Gyroscope(void);
+void HandleCriticalEvent(void);
+
+//Blue button triggers interrupt
+HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin == BUTTON_EXTI13_Pin){
+//		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+		printf("\t Blue button is pressed.\r\n");
+		criticalEventFlag = 1;
+	}
+}
 
 /*
  * ODR values:
@@ -117,6 +124,8 @@ int _write(int file, char *ptr, int len)
     HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
     return len;
 }
+
+
 
 /* USER CODE END 0 */
 
@@ -165,10 +174,7 @@ int main(void)
   BSP_MAGNETO_Init();//Magnetometer init
   BSP_GYRO_Init();//Gyroscope init
   BSP_ACCELERO_Init();//Accelerometer init
-  /* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   int getRandomDelay(void)
   {
       return (rand() % 11) + 10;
@@ -195,16 +201,23 @@ int main(void)
   uint32_t lastMagnetoPoll   = now + 25   + randDelayMagneto;    // 40Hz sensor
 
 
+  /* USER CODE END 2 */
+
   while (1)
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
   {
 
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-//	HAL_Delay(1000);
-
 	uint32_t now = HAL_GetTick();
+//	printf("HALTick %lu\r\n",now);
 
+	if (criticalEventFlag)
+		{
+	         HandleCriticalEvent();
+	         // After handling, clear the flag so that routine tasks resume.
+	         criticalEventFlag = 0;
+	     }
+	else{
 	 // Poll Humidity/Temperature sensor at ~1Hz (1000ms + random 10-20ms)
 	    if (now >= lastTempHumPoll)
 	    {
@@ -289,16 +302,22 @@ int main(void)
 	         printf("Magnetometer: X: %f, Y: %f, Z: %f\r\n",
 	        		 newMagneto[0], newMagneto[1], newMagneto[2]);
 	    }
+	}
 
 	    // Optional: Toggle LEDs for visual feedback.
 //	    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
 //	    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
 
 	    // A short delay to avoid a busy loop.
-//	    HAL_Delay(1);// default polling rate
-	    HAL_Delay(1000);
+	    HAL_Delay(1);// default polling rate
+//	    HAL_Delay(1000);
 	    printf("=========\r\n");
   }
+  /* USER CODE END WHILE */
+
+  /* USER CODE BEGIN 3 */
+
+
   /* USER CODE END 3 */
 }
 
@@ -820,7 +839,25 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/* Critical Event Handling Function */
+void HandleCriticalEvent(void)
+{
+    // Example: Flash LEDs and print a warning.
+    printf("** Critical event detected! Pausing routine tasks. **\r\n");
 
+    // Non-blocking LED flashing can be done via timing (here, for illustration, we use blocking delays)
+      for (int i = 0; i < 5; i++)
+      {
+          HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+          HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
+          HAL_Delay(100);  // short delay
+          HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+          HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
+          HAL_Delay(100);
+      }
+      HAL_Delay(1000);
+    // Additional critical event handling (e.g., immediate data transmission or system safety measures) can be done here.
+}
 /* USER CODE END 4 */
 
 /**
