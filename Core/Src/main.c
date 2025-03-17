@@ -70,6 +70,16 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 #define VIBRATION_THRESHOLD    11.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
 
 volatile uint8_t criticalEventFlag = 0;
+
+#define NUM_BUFFERS 3
+#define BUFFER_SIZE 256
+#define PREDICTIVE_THRESHOLD 2.0f
+
+typedef struct {
+    int data[BUFFER_SIZE];  // Data storage (example type)
+    int occupancy;          // Number of items currently in the buffer
+    int frequency;          // Estimated capture frequency (items per second)
+} Buffer;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -311,7 +321,7 @@ int main(void)
 	    // A short delay to avoid a busy loop.
 	    HAL_Delay(1);// default polling rate
 //	    HAL_Delay(1000);
-	    printf("=========\r\n");
+//	    printf("=========\r\n");
   }
   /* USER CODE END WHILE */
 
