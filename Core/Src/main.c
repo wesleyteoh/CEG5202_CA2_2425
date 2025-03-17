@@ -30,6 +30,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,7 +63,11 @@ UART_HandleTypeDef huart3;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
-
+// Threshold definitions
+#define HIGH_TEMP_THRESHOLD    27.0f    // High temp threshold in degC
+#define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
+#define HIGH_HUMIDITY_THRESHOLD 70.0f
+#define VIBRATION_THRESHOLD    11.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -215,6 +220,20 @@ int main(void)
 	         float newHumidity = humidity * (1.0f + humError);
 
 	         printf("Temperature: %f C, Humidity: %f%%\r\n", newTemp, newHumidity);
+
+	         // Event handling for high temperature and low humidity:
+	         if (newTemp > HIGH_TEMP_THRESHOLD)
+	         {
+	             printf("** High temperature alert: %f C. Activating cooler **\r\n", newTemp);
+	         }
+	         if (newHumidity < LOW_HUMIDITY_THRESHOLD)
+	         {
+	             printf("** Low humidity alert: %f%%! Activating Humidifier.**\r\n", newHumidity);
+	         }
+	         if (newHumidity > HIGH_HUMIDITY_THRESHOLD)
+	         {
+	             printf("** High humidity alert: %f%% **\r\n", newHumidity);
+	         }
 	    }
 
 	    // Poll Accelerometer/Gyro at ~52Hz (19ms + random 10-20ms)
@@ -232,6 +251,15 @@ int main(void)
 	         }
 	         printf("Accelerometer: X: %f, Y: %f, Z: %f\r\n",
 	                accel_data[0], accel_data[1], accel_data[2]);
+	         // Event handling for high vibration: If any axis exceeds the threshold, flash an LED.
+	         if (fabs(accel_data[0]) > VIBRATION_THRESHOLD ||
+	             fabs(accel_data[1]) > VIBRATION_THRESHOLD ||
+	             fabs(accel_data[2]) > VIBRATION_THRESHOLD)
+	         {
+	        	 printf("** Vibration warning! **\r\n");
+	        	 HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+	        	 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
+	         }
 	    }
 
 	    // Poll Pressure sensor at ~25Hz (40ms + random 10-20ms)
