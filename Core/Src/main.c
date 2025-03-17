@@ -211,10 +211,10 @@ int main(void)
 	         // Add error to temperature and humidity readings
 	         float tempError = getRandomErrorFactor();
 	         float humError  = getRandomErrorFactor();
-	         float adjustedTemp = temp * (1.0f + tempError);
-	         float adjustedHumidity = humidity * (1.0f + humError);
+	         float newTemp = temp * (1.0f + tempError);
+	         float newHumidity = humidity * (1.0f + humError);
 
-	         printf("Temperature: %f C, Humidity: %f%%\r\n", temp, humidity);
+	         printf("Temperature: %f C, Humidity: %f%%\r\n", newTemp, newHumidity);
 	    }
 
 	    // Poll Accelerometer/Gyro at ~52Hz (19ms + random 10-20ms)
@@ -241,8 +241,8 @@ int main(void)
 	         lastPressurePoll = now + 40 + randPollDelay;
 	         float pressure = BSP_PSENSOR_ReadPressure();
 	         float error = getRandomErrorFactor();
-	         float adjustedPressure = pressure * (1.0f + error);
-	         printf("Pressure: %f hPa\r\n", pressure);
+	         float newPressure = pressure * (1.0f + error);
+	         printf("Pressure: %f hPa\r\n", newPressure);
 	    }
 
 	    // Poll Magnetometer sensor at ~40Hz (25ms + random 10-20ms)
@@ -252,14 +252,14 @@ int main(void)
 	         lastMagnetoPoll = now + 25 + randPollDelay;
 	         int16_t magneto_data[3] = {0};
 	         BSP_MAGNETO_GetXYZ(magneto_data);
-	         float adjustedMagneto[3];
+	         float newMagneto[3];
 	         for (int i = 0; i < 3; i++)
 	             {
 	                 float error = getRandomErrorFactor();
-	                 adjustedMagneto[i] = magneto_data[i] * (1.0f + error);
+	                 newMagneto[i] = magneto_data[i] * (1.0f + error);
 	             }
-	         printf("Magnetometer: X: %d, Y: %d, Z: %d\r\n",
-	                magneto_data[0], magneto_data[1], magneto_data[2]);
+	         printf("Magnetometer: X: %f, Y: %f, Z: %f\r\n",
+	        		 newMagneto[0], newMagneto[1], newMagneto[2]);
 	    }
 
 	    // Optional: Toggle LEDs for visual feedback.
@@ -268,7 +268,7 @@ int main(void)
 
 	    // A short delay to avoid a busy loop.
 //	    HAL_Delay(1);// default polling rate
-	    HAL_Delay(100);
+	    HAL_Delay(1000);
 	    printf("=========\r\n");
   }
   /* USER CODE END 3 */
