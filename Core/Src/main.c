@@ -36,8 +36,15 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef enum {
+    MODE_RANDOM,
+    MODE_FULL_BUFFER
+} TransmissionMode;
+
+TransmissionMode transmissionMode = MODE_FULL_BUFFER; // Default to random mode
+
 // Define the FIFO capacity
-#define SENSOR_BUFFER_CAPACITY 256
+#define SENSOR_BUFFER_CAPACITY 200
 
 #define TRANSMISSION_INTERVAL 1000
 uint32_t lastTransmissionTime = 0;
@@ -64,6 +71,8 @@ typedef struct {
     uint8_t tail;
     uint8_t count;
 } FIFO_Vector;
+
+
 
 /* USER CODE END PTD */
 
@@ -257,6 +266,26 @@ void transmitRandomBuffer(void) {
             break;
         default:
             break;
+    }
+}
+
+void transmitFullBuffers(void) {
+    uint8_t threshold = (SENSOR_BUFFER_CAPACITY * 95) / 100; // 95% threshold.
+
+    if (fifoTemp.count >= threshold) {
+        transmitEntireFIFO_Float(&fifoTemp, "Temperature");
+    }
+    if (fifoHumidity.count >= threshold) {
+        transmitEntireFIFO_Float(&fifoHumidity, "Humidity");
+    }
+    if (fifoPressure.count >= threshold) {
+        transmitEntireFIFO_Float(&fifoPressure, "Pressure");
+    }
+    if (fifoAccel.count >= threshold) {
+        transmitEntireFIFO_Vector(&fifoAccel, "Accelerometer");
+    }
+    if (fifoMagneto.count >= threshold) {
+        transmitEntireFIFO_Vector(&fifoMagneto, "Magnetometer");
     }
 }
 
@@ -457,12 +486,21 @@ int main(void)
 //	         printf("Magnetometer: X: %f, Y: %f, Z: %f\r\n", newMagneto[0], newMagneto[1], newMagneto[2]);
 
 	    }
-	    // Transmit sensor data at fixed intervals
-	    if ((now - lastTransmissionTime) >= TRANSMISSION_INTERVAL)
-	    {
-	    	transmitRandomBuffer();
-	        lastTransmissionTime = now;
-	    }
+
+        if (transmissionMode == MODE_FULL_BUFFER)
+        {
+            transmitFullBuffers();
+        }
+
+        // For RANDOM mode: transmit one randomly selected buffer at fixed intervals.
+        if ((now - lastTransmissionTime) >= TRANSMISSION_INTERVAL)
+        {
+            if (transmissionMode == MODE_RANDOM)
+            {
+                transmitRandomBuffer();
+            }
+            lastTransmissionTime = now;
+        }
 	}
 
 	    // Optional: Toggle LEDs for visual feedback.
