@@ -36,10 +36,46 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+// Define the FIFO capacity
+#define SENSOR_BUFFER_CAPACITY 256
+
+#define TRANSMISSION_INTERVAL 1000
+uint32_t lastTransmissionTime = 0;
+
+// FIFO structure for scalar (float) sensor data (e.g. temperature, humidity, pressure)
+typedef struct {
+    float data[SENSOR_BUFFER_CAPACITY];
+    uint8_t head;
+    uint8_t tail;
+    uint8_t count;
+} FIFO_Float;
+
+// Structure for 3-axis vector data (e.g. accelerometer, magnetometer)
+typedef struct {
+    float x;
+    float y;
+    float z;
+} Vector3;
+
+// FIFO structure for vector sensor data
+typedef struct {
+    Vector3 data[SENSOR_BUFFER_CAPACITY];
+    uint8_t head;
+    uint8_t tail;
+    uint8_t count;
+} FIFO_Vector;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+// Threshold definitions
+#define HIGH_TEMP_THRESHOLD    27.0f    // High temp threshold in degC
+#define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
+#define HIGH_HUMIDITY_THRESHOLD 70.0f
+#define VIBRATION_THRESHOLD    11.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
+
 
 /* USER CODE END PD */
 
@@ -63,23 +99,18 @@ UART_HandleTypeDef huart3;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
-// Threshold definitions
-#define HIGH_TEMP_THRESHOLD    27.0f    // High temp threshold in degC
-#define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
-#define HIGH_HUMIDITY_THRESHOLD 70.0f
-#define VIBRATION_THRESHOLD    11.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
+// Global variable to hold the latest pressure reading (updated at ~25Hz)
+volatile float latestPressureReading = 0.0f;
 
 volatile uint8_t criticalEventFlag = 0;
 
-#define NUM_BUFFERS 3
-#define BUFFER_SIZE 256
-#define PREDICTIVE_THRESHOLD 2.0f
+// Global FIFO buffers for each sensor:
+FIFO_Float fifoTemp;
+FIFO_Float fifoHumidity;
+FIFO_Float fifoPressure;
+FIFO_Vector fifoAccel;
+FIFO_Vector fifoMagneto;
 
-typedef struct {
-    int data[BUFFER_SIZE];  // Data storage (example type)
-    int occupancy;          // Number of items currently in the buffer
-    int frequency;          // Estimated capture frequency (items per second)
-} Buffer;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -113,6 +144,64 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	}
 }
 
+// FIFO push functions: they return -1 if the FIFO is full (i.e. new data is discarded).
+int pushFIFO_Float(FIFO_Float *fifo, float value) {
+    if (fifo->count >= SENSOR_BUFFER_CAPACITY) {
+        // Buffer is full – discard new data
+        return -1;
+    }
+    fifo->data[fifo->tail] = value;
+    fifo->tail = (fifo->tail + 1) % SENSOR_BUFFER_CAPACITY;
+    fifo->count++;
+    return 0;
+}
+
+int pushFIFO_Vector(FIFO_Vector *fifo, Vector3 value) {
+    if (fifo->count >= SENSOR_BUFFER_CAPACITY) {
+        return -1;
+    }
+    fifo->data[fifo->tail] = value;
+    fifo->tail = (fifo->tail + 1) % SENSOR_BUFFER_CAPACITY;
+    fifo->count++;
+    return 0;
+}
+
+// FIFO pop functions
+int popFIFO_Float(FIFO_Float *fifo, float *value) {
+    if (fifo->count == 0) {
+        return -1; // Empty
+    }
+    *value = fifo->data[fifo->head];
+    fifo->head = (fifo->head + 1) % SENSOR_BUFFER_CAPACITY;
+    fifo->count--;
+    return 0;
+}
+
+int popFIFO_Vector(FIFO_Vector *fifo, Vector3 *value) {
+    if (fifo->count == 0) {
+        return -1;
+    }
+    *value = fifo->data[fifo->head];
+    fifo->head = (fifo->head + 1) % SENSOR_BUFFER_CAPACITY;
+    fifo->count--;
+    return 0;
+}
+
+void transmitEntireFIFO_Float(FIFO_Float *fifo, const char *sensorName) {
+    float value;
+    // Transmit until the FIFO is empty.
+    while (popFIFO_Float(fifo, &value) == 0) {
+        printf("Transmitting %s: %f\r\n", sensorName, value);
+    }
+}
+
+void transmitEntireFIFO_Vector(FIFO_Vector *fifo, const char *sensorName) {
+    Vector3 value;
+    while (popFIFO_Vector(fifo, &value) == 0) {
+        printf("Transmitting %s: X: %f, Y: %f, Z: %f\r\n",
+               sensorName, value.x, value.y, value.z);
+    }
+}
 /*
  * ODR values:
  *
@@ -121,6 +210,9 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
  * pressure: 25Hz
  * magnetometer: 40Hz
  */
+
+
+
 
 extern void initialise_monitor_handles(void);
 /* USER CODE END PFP */
@@ -135,7 +227,38 @@ int _write(int file, char *ptr, int len)
     return len;
 }
 
-
+void transmitRandomBuffer(void) {
+    int choice = rand() % 5; // Randomly select one of the 5 sensor buffers
+    switch (choice) {
+        case 0:
+            if (fifoTemp.count > 0) {
+                transmitEntireFIFO_Float(&fifoTemp, "Temperature");
+            }
+            break;
+        case 1:
+            if (fifoHumidity.count > 0) {
+                transmitEntireFIFO_Float(&fifoHumidity, "Humidity");
+            }
+            break;
+        case 2:
+            if (fifoPressure.count > 0) {
+                transmitEntireFIFO_Float(&fifoPressure, "Pressure");
+            }
+            break;
+        case 3:
+            if (fifoAccel.count > 0) {
+                transmitEntireFIFO_Vector(&fifoAccel, "Accelerometer");
+            }
+            break;
+        case 4:
+            if (fifoMagneto.count > 0) {
+                transmitEntireFIFO_Vector(&fifoMagneto, "Magnetometer");
+            }
+            break;
+        default:
+            break;
+    }
+}
 
 /* USER CODE END 0 */
 
@@ -229,6 +352,8 @@ int main(void)
 	     }
 	else{
 	 // Poll Humidity/Temperature sensor at ~1Hz (1000ms + random 10-20ms)
+
+
 	    if (now >= lastTempHumPoll)
 	    {
 	         int randPollDelay = getRandomDelay();
@@ -242,9 +367,14 @@ int main(void)
 	         float newTemp = temp * (1.0f + tempError);
 	         float newHumidity = humidity * (1.0f + humError);
 
-	         printf("Temperature: %f C, Humidity: %f%%\r\n", newTemp, newHumidity);
+	         if (pushFIFO_Float(&fifoTemp, newTemp) != 0)
+	             printf("Temperature FIFO full, discarding reading.\r\n");
+	         if (pushFIFO_Float(&fifoHumidity, newHumidity) != 0)
+	             printf("Humidity FIFO full, discarding reading.\r\n");
 
-	         // Event handling for high temperature and low humidity:
+//	         printf("Temperature: %f C, Humidity: %f%%\r\n", newTemp, newHumidity);
+//
+//	         // Event handling for high temperature and low humidity:
 	         if (newTemp > HIGH_TEMP_THRESHOLD)
 	         {
 	             printf("** High temperature alert: %f C. Activating cooler **\r\n", newTemp);
@@ -267,13 +397,20 @@ int main(void)
 	         int16_t accel_data_i16[3] = {0};
 	         BSP_ACCELERO_AccGetXYZ(accel_data_i16);
 	         float accel_data[3];
+	         Vector3 accelReading;
 	         for (int i = 0; i < 3; i++)
 	         {
 	             float error = getRandomErrorFactor();
 	             accel_data[i] = (accel_data_i16[i] / 100.0f) * (1.0f + error);
 	         }
-	         printf("Accelerometer: X: %f, Y: %f, Z: %f\r\n",
-	                accel_data[0], accel_data[1], accel_data[2]);
+
+	         accelReading.x = accel_data[0];
+	         accelReading.y = accel_data[1];
+	         accelReading.z = accel_data[2];
+	         if (pushFIFO_Vector(&fifoAccel, accelReading) != 0)
+	             printf("Accelerometer FIFO full, discarding reading.\r\n");
+//	         printf("Accelerometer: X: %f, Y: %f, Z: %f\r\n",
+//	                accel_data[0], accel_data[1], accel_data[2]);
 	         // Event handling for high vibration: If any axis exceeds the threshold, flash an LED.
 	         if (fabs(accel_data[0]) > VIBRATION_THRESHOLD ||
 	             fabs(accel_data[1]) > VIBRATION_THRESHOLD ||
@@ -293,7 +430,9 @@ int main(void)
 	         float pressure = BSP_PSENSOR_ReadPressure();
 	         float error = getRandomErrorFactor();
 	         float newPressure = pressure * (1.0f + error);
-	         printf("Pressure: %f hPa\r\n", newPressure);
+	         if (pushFIFO_Float(&fifoPressure, newPressure) != 0)
+	                 printf("Pressure FIFO full, discarding reading.\r\n");
+//	         printf("Pressure: %f hPa\r\n", newPressure);
 	    }
 
 	    // Poll Magnetometer sensor at ~40Hz (25ms + random 10-20ms)
@@ -304,13 +443,25 @@ int main(void)
 	         int16_t magneto_data[3] = {0};
 	         BSP_MAGNETO_GetXYZ(magneto_data);
 	         float newMagneto[3];
+	         Vector3 magnetoReading;
 	         for (int i = 0; i < 3; i++)
 	             {
 	                 float error = getRandomErrorFactor();
 	                 newMagneto[i] = magneto_data[i] * (1.0f + error);
 	             }
-	         printf("Magnetometer: X: %f, Y: %f, Z: %f\r\n",
-	        		 newMagneto[0], newMagneto[1], newMagneto[2]);
+	         magnetoReading.x = newMagneto[0];
+	         magnetoReading.y = newMagneto[1];
+	         magnetoReading.z = newMagneto[2];
+	         if (pushFIFO_Vector(&fifoMagneto, magnetoReading) != 0)
+	             printf("Magnetometer FIFO full, discarding reading.\r\n");
+//	         printf("Magnetometer: X: %f, Y: %f, Z: %f\r\n", newMagneto[0], newMagneto[1], newMagneto[2]);
+
+	    }
+	    // Transmit sensor data at fixed intervals
+	    if ((now - lastTransmissionTime) >= TRANSMISSION_INTERVAL)
+	    {
+	    	transmitRandomBuffer();
+	        lastTransmissionTime = now;
 	    }
 	}
 
@@ -320,7 +471,7 @@ int main(void)
 
 	    // A short delay to avoid a busy loop.
 	    HAL_Delay(1);// default polling rate
-//	    HAL_Delay(1000);
+//	    HAL_Delay(200);
 //	    printf("=========\r\n");
   }
   /* USER CODE END WHILE */
@@ -866,6 +1017,7 @@ void HandleCriticalEvent(void)
           HAL_Delay(100);
       }
       HAL_Delay(1000);
+      printf("** Critical event resolved. Resuming normal operations **\r\n");
     // Additional critical event handling (e.g., immediate data transmission or system safety measures) can be done here.
 }
 /* USER CODE END 4 */
