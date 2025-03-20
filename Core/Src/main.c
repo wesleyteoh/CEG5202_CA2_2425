@@ -44,7 +44,7 @@ typedef enum {
 TransmissionMode transmissionMode = MODE_FULL_BUFFER; // Default to random mode
 
 // Define the FIFO capacity
-#define SENSOR_BUFFER_CAPACITY 200
+#define SENSOR_BUFFER_CAPACITY 100
 
 #define TRANSMISSION_INTERVAL 1000
 uint32_t lastTransmissionTime = 0;
@@ -55,6 +55,7 @@ typedef struct {
     uint8_t head;
     uint8_t tail;
     uint8_t count;
+    uint32_t timestamp[SENSOR_BUFFER_CAPACITY];
 } FIFO_Float;
 
 // Structure for 3-axis vector data (e.g. accelerometer, magnetometer)
@@ -70,6 +71,7 @@ typedef struct {
     uint8_t head;
     uint8_t tail;
     uint8_t count;
+    uint32_t timestamp[SENSOR_BUFFER_CAPACITY];
 } FIFO_Vector;
 
 
@@ -149,6 +151,7 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == BUTTON_EXTI13_Pin){
 //		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
 		printf("\t Blue button is pressed.\r\n");
+		toggleTransmissionMode();
 		criticalEventFlag = 1;
 	}
 }
@@ -160,6 +163,7 @@ int pushFIFO_Float(FIFO_Float *fifo, float value) {
         return -1;
     }
     fifo->data[fifo->tail] = value;
+    fifo->timestamp[fifo->tail] = HAL_GetTick();  // Save current timestamp
     fifo->tail = (fifo->tail + 1) % SENSOR_BUFFER_CAPACITY;
     fifo->count++;
     return 0;
@@ -170,27 +174,30 @@ int pushFIFO_Vector(FIFO_Vector *fifo, Vector3 value) {
         return -1;
     }
     fifo->data[fifo->tail] = value;
+    fifo->timestamp[fifo->tail] = HAL_GetTick();  // Save current timestamp
     fifo->tail = (fifo->tail + 1) % SENSOR_BUFFER_CAPACITY;
     fifo->count++;
     return 0;
 }
 
 // FIFO pop functions
-int popFIFO_Float(FIFO_Float *fifo, float *value) {
+int popFIFO_Float(FIFO_Float *fifo, float *value, uint32_t *timestamp) {
     if (fifo->count == 0) {
         return -1; // Empty
     }
     *value = fifo->data[fifo->head];
+    *timestamp = fifo->timestamp[fifo->head];
     fifo->head = (fifo->head + 1) % SENSOR_BUFFER_CAPACITY;
     fifo->count--;
     return 0;
 }
 
-int popFIFO_Vector(FIFO_Vector *fifo, Vector3 *value) {
+int popFIFO_Vector(FIFO_Vector *fifo, Vector3 *value, uint32_t *timestamp) {
     if (fifo->count == 0) {
         return -1;
     }
     *value = fifo->data[fifo->head];
+    *timestamp = fifo->timestamp[fifo->head];
     fifo->head = (fifo->head + 1) % SENSOR_BUFFER_CAPACITY;
     fifo->count--;
     return 0;
@@ -198,17 +205,19 @@ int popFIFO_Vector(FIFO_Vector *fifo, Vector3 *value) {
 
 void transmitEntireFIFO_Float(FIFO_Float *fifo, const char *sensorName) {
     float value;
-    // Transmit until the FIFO is empty.
-    while (popFIFO_Float(fifo, &value) == 0) {
-        printf("Transmitting %s: %f\r\n", sensorName, value);
+    uint32_t timestamp;
+    while (popFIFO_Float(fifo, &value, &timestamp) == 0) {
+        // Transmit sensor name, value, and timestamp.
+        printf("%s,%lu,%f\r\n", sensorName, timestamp, value);
     }
 }
 
 void transmitEntireFIFO_Vector(FIFO_Vector *fifo, const char *sensorName) {
     Vector3 value;
-    while (popFIFO_Vector(fifo, &value) == 0) {
-        printf("Transmitting %s: X: %f, Y: %f, Z: %f\r\n",
-               sensorName, value.x, value.y, value.z);
+    uint32_t timestamp;
+    while (popFIFO_Vector(fifo, &value, &timestamp) == 0) {
+        // Transmit sensor name, X, Y, Z values and timestamp.
+        printf("%s,%lu,%f,%f,%f\r\n", sensorName, timestamp, value.x, value.y, value.z);
     }
 }
 /*
@@ -234,6 +243,15 @@ int _write(int file, char *ptr, int len)
 {
     HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
     return len;
+}
+
+void toggleTransmissionMode(void) {
+    if (transmissionMode == MODE_RANDOM)
+        transmissionMode = MODE_FULL_BUFFER;
+    else
+        transmissionMode = MODE_RANDOM;
+    printf("Transmission mode toggled to: %s\r\n",
+           (transmissionMode == MODE_RANDOM) ? "RANDOM MODE" : "FULL BUFFER MODE");
 }
 
 void transmitRandomBuffer(void) {
