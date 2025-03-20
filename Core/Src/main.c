@@ -31,6 +31,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <float.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,7 +40,8 @@
 
 typedef enum {
     MODE_RANDOM,
-    MODE_FULL_BUFFER
+    MODE_FULL_BUFFER,
+	MODE_PREDICTIVE
 } TransmissionMode;
 
 TransmissionMode transmissionMode = MODE_FULL_BUFFER; // Default to random mode
@@ -82,9 +85,9 @@ typedef struct {
 /* USER CODE BEGIN PD */
 
 // Threshold definitions
-#define HIGH_TEMP_THRESHOLD    27.0f    // High temp threshold in degC
+#define HIGH_TEMP_THRESHOLD    24.0f    // High temp threshold in degC default 27
 #define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
-#define HIGH_HUMIDITY_THRESHOLD 70.0f
+#define HIGH_HUMIDITY_THRESHOLD 70.0f	// Humidity high threshold in %, set at 101 to disable, 70 as spec
 #define VIBRATION_THRESHOLD    11.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
 
 
@@ -152,7 +155,7 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 //		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
 		printf("\t Blue button is pressed.\r\n");
 		toggleTransmissionMode();
-		criticalEventFlag = 1;
+
 	}
 }
 
@@ -220,6 +223,8 @@ void transmitEntireFIFO_Vector(FIFO_Vector *fifo, const char *sensorName) {
         printf("%s,%lu,%f,%f,%f\r\n", sensorName, timestamp, value.x, value.y, value.z);
     }
 }
+
+
 /*
  * ODR values:
  *
@@ -246,12 +251,21 @@ int _write(int file, char *ptr, int len)
 }
 
 void toggleTransmissionMode(void) {
-    if (transmissionMode == MODE_RANDOM)
+    if (transmissionMode == MODE_RANDOM) {
         transmissionMode = MODE_FULL_BUFFER;
-    else
+    } else if (transmissionMode == MODE_FULL_BUFFER) {
+        transmissionMode = MODE_PREDICTIVE;
+    } else if (transmissionMode == MODE_PREDICTIVE) {
         transmissionMode = MODE_RANDOM;
-    printf("Transmission mode toggled to: %s\r\n",
-           (transmissionMode == MODE_RANDOM) ? "RANDOM MODE" : "FULL BUFFER MODE");
+    }
+
+    if (transmissionMode == MODE_RANDOM) {
+        printf("Transmission mode toggled to: RANDOM MODE\r\n");
+    } else if (transmissionMode == MODE_FULL_BUFFER) {
+        printf("Transmission mode toggled to: FULL BUFFER MODE\r\n");
+    } else if (transmissionMode == MODE_PREDICTIVE) {
+        printf("Transmission mode toggled to: PREDICTIVE MODE\r\n");
+    }
 }
 
 void transmitRandomBuffer(void) {
@@ -287,24 +301,102 @@ void transmitRandomBuffer(void) {
     }
 }
 
+float getFIFO_timeToFillFloat(FIFO_Float *fifo) {
+    if (fifo->count == 0) {
+        return -1; // Empty
+    }
+	 float inputRate = (HAL_GetTick() - fifo->timestamp[fifo->tail]) / (fifo->count); // Get the rate of input/frequency
+	 uint16_t remainingCapacity = SENSOR_BUFFER_CAPACITY - fifo->count; // get the remaining unoccupied buffer
+	 return remainingCapacity / inputRate; // Calculate the time taken to fill the remaining cap
+}
+float getFIFO_timeToFillVector(FIFO_Vector *fifo) {
+    if (fifo->count == 0) {
+        return -1; // Empty
+    }
+	 float inputRate = (HAL_GetTick() - fifo->timestamp[fifo->tail]) / (fifo->count); // Get the rate of input/frequency
+	 uint16_t remainingCapacity = SENSOR_BUFFER_CAPACITY - fifo->count; // get the remaining unoccupied buffer
+	 return remainingCapacity / inputRate; // Calculate the time taken to fill the remaining cap
+}
+
+
+
 void transmitFullBuffers(void) {
     uint8_t threshold = (SENSOR_BUFFER_CAPACITY * 99) / 100; // 99% threshold.
 
     if (fifoTemp.count >= threshold) {
         transmitEntireFIFO_Float(&fifoTemp, "Temperature");
     }
-    if (fifoHumidity.count >= threshold) {
+    else if (fifoHumidity.count >= threshold) {
         transmitEntireFIFO_Float(&fifoHumidity, "Humidity");
     }
-    if (fifoPressure.count >= threshold) {
+    else if (fifoPressure.count >= threshold) {
         transmitEntireFIFO_Float(&fifoPressure, "Pressure");
     }
-    if (fifoAccel.count >= threshold) {
+    else if (fifoAccel.count >= threshold) {
         transmitEntireFIFO_Vector(&fifoAccel, "Accelerometer");
     }
-    if (fifoMagneto.count >= threshold) {
+    else if (fifoMagneto.count >= threshold) {
         transmitEntireFIFO_Vector(&fifoMagneto, "Magnetometer");
     }
+}
+
+char* getMostFilledBuffer(void) {
+ float minTimeToFill = FLT_MAX;
+ char* minBuffer = NULL;
+    if (fifoTemp.count > 0) {
+     float timeToFill = getFIFO_timeToFillFloat(&fifoTemp); // Use input frequency and occupancy to calculate time for remaining cap to fill
+     if (minTimeToFill > timeToFill) {
+      minTimeToFill = timeToFill;
+      minBuffer = "Temperature";
+     }
+    }
+    if (fifoHumidity.count > 0) {
+     float timeToFill = getFIFO_timeToFillFloat(&fifoHumidity);
+     if (minTimeToFill > timeToFill) {
+      minTimeToFill = timeToFill;
+      minBuffer = "Humidity";
+     }
+    }
+    if (fifoPressure.count > 0) {
+     float timeToFill = getFIFO_timeToFillFloat(&fifoPressure);
+     if (minTimeToFill > timeToFill) {
+      minTimeToFill = timeToFill;
+      minBuffer = "Pressure";
+     }
+    }
+    if (fifoMagneto.count > 0) {
+     float timeToFill = getFIFO_timeToFillVector(&fifoMagneto);
+     if (minTimeToFill > timeToFill) {
+      minTimeToFill = timeToFill;
+      minBuffer = "Magneto";
+     }
+    }
+    if (fifoAccel.count > 0) {
+     float timeToFill = getFIFO_timeToFillVector(&fifoAccel);
+     if (minTimeToFill > timeToFill) {
+      minTimeToFill = timeToFill;
+      minBuffer = "Accelerometer";
+     }
+    }
+
+    return minBuffer;
+}
+
+
+
+
+void transmitpredictiveBuffers(const char* selectedBuffer) {
+ if (strcmp(selectedBuffer,"Temperature") == 0) {
+  transmitEntireFIFO_Float(&fifoTemp, "Temperature");
+ } else if (strcmp(selectedBuffer,"Humidity") == 0) {
+  transmitEntireFIFO_Float(&fifoHumidity, "Humidity");
+ } else if (strcmp(selectedBuffer,"Pressure") == 0) {
+  transmitEntireFIFO_Float(&fifoPressure, "Pressure");
+ }  else if (strcmp(selectedBuffer,"Accelerometer") == 0) {
+  transmitEntireFIFO_Vector(&fifoAccel, "Accelerometer");
+ } else if (strcmp(selectedBuffer,"Magneto") == 0) {
+  transmitEntireFIFO_Vector(&fifoMagneto, "Magnetometer");
+ }
 }
 
 /* USER CODE END 0 */
@@ -405,77 +497,98 @@ int main(void)
 	 // Poll Humidity/Temperature sensor at ~1Hz (1000ms + random 10-20ms)
 
 
-	    if (now >= lastTempHumPoll)
-	    {
-	         int randPollDelay = getRandomDelay();
-	         lastTempHumPoll = now + 1000 + randPollDelay;
-	         float temp = BSP_TSENSOR_ReadTemp();
-	         float humidity = BSP_HSENSOR_ReadHumidity();
+		if (now >= lastTempHumPoll)
+		{
+		    int randPollDelay = getRandomDelay();
+		    lastTempHumPoll = now + 1000 + randPollDelay;
 
-	         // Add error to temperature and humidity readings
-	         float tempError = getRandomErrorFactor();
-	         float humError  = getRandomErrorFactor();
-	         float newTemp = temp * (1.0f + tempError);
-	         float newHumidity = humidity * (1.0f + humError);
+		    // Capture sensor reading timestamp
+		    uint32_t sensorReadTime = HAL_GetTick();
 
-	         if (newHumidity > 100.0f) {
-	             newHumidity = 100.0f;
-	         }
+		    float temp = BSP_TSENSOR_ReadTemp();
+		    float humidity = BSP_HSENSOR_ReadHumidity();
 
-	         if (pushFIFO_Float(&fifoTemp, newTemp) != 0)
-	             printf("Temperature FIFO full, discarding reading.\r\n");
-	         if (pushFIFO_Float(&fifoHumidity, newHumidity) != 0)
-	             printf("Humidity FIFO full, discarding reading.\r\n");
+		    // Add error to readings
+		    float tempError = getRandomErrorFactor();
+		    float humError  = getRandomErrorFactor();
+		    float newTemp = temp * (1.0f + tempError);
+		    float newHumidity = humidity * (1.0f + humError);
 
-//	         printf("Temperature: %f C, Humidity: %f%%\r\n", newTemp, newHumidity);
-//
-//	         // Event handling for high temperature and low humidity:
-	         if (newTemp > HIGH_TEMP_THRESHOLD)
-	         {
-	             printf("** High temperature alert: %f C. Activating cooler **\r\n", newTemp);
-	         }
-	         if (newHumidity < LOW_HUMIDITY_THRESHOLD)
-	         {
-	             printf("** Low humidity alert: %f%%! Activating Humidifier.**\r\n", newHumidity);
-	         }
-	         if (newHumidity > HIGH_HUMIDITY_THRESHOLD)
-	         {
-	             printf("** High humidity alert: %f%% **\r\n", newHumidity);
-	         }
-	    }
+		    if (newHumidity > 100.0f) {
+		         newHumidity = 100.0f;
+		    }
+
+		    if (pushFIFO_Float(&fifoTemp, newTemp) != 0)
+		         printf("Temperature FIFO full, discarding reading.\r\n");
+		    if (pushFIFO_Float(&fifoHumidity, newHumidity) != 0)
+		         printf("Humidity FIFO full, discarding reading.\r\n");
+
+		    // Alert conditions with delay logging:
+		    if (newTemp > HIGH_TEMP_THRESHOLD)
+		    {
+		         uint32_t alertTime = HAL_GetTick();
+		         uint32_t sensorDelay = alertTime - sensorReadTime;
+		         uint32_t responseDelay = sensorDelay;  // Modify if response time is measured differently
+		         printf("** Alert: High temperature alert: %f C. Sensor delay: %lu ms, Response delay: %lu ms. Activating cooler **\r\n",
+		                 newTemp, sensorDelay, responseDelay);
+		    }
+		    if (newHumidity < LOW_HUMIDITY_THRESHOLD)
+		    {
+		         uint32_t alertTime = HAL_GetTick();
+		         uint32_t sensorDelay = alertTime - sensorReadTime;
+		         uint32_t responseDelay = sensorDelay;
+		         printf("** Alert: Low humidity alert: %f%%! Sensor delay: %lu ms, Response delay: %lu ms. Activating Humidifier. **\r\n",
+		                 newHumidity, sensorDelay, responseDelay);
+		    }
+		    if (newHumidity > HIGH_HUMIDITY_THRESHOLD)
+		    {
+		         uint32_t alertTime = HAL_GetTick();
+		         uint32_t sensorDelay = alertTime - sensorReadTime;
+		         uint32_t responseDelay = sensorDelay;
+		         printf("** Alert: High humidity alert: %f%%. Sensor delay: %lu ms, Response delay: %lu ms **\r\n",
+		                 newHumidity, sensorDelay, responseDelay);
+		    }
+		}
 
 	    // Poll Accelerometer/Gyro at ~52Hz (19ms + random 10-20ms)
-	    if (now >= lastAccelGyroPoll)
-	    {
-	         int randPollDelay = getRandomDelay();
-	         lastAccelGyroPoll = now + 19 + randPollDelay;
-	         int16_t accel_data_i16[3] = {0};
-	         BSP_ACCELERO_AccGetXYZ(accel_data_i16);
-	         float accel_data[3];
-	         Vector3 accelReading;
-	         for (int i = 0; i < 3; i++)
-	         {
-	             float error = getRandomErrorFactor();
-	             accel_data[i] = (accel_data_i16[i] / 100.0f) * (1.0f + error);
-	         }
+		if (now >= lastAccelGyroPoll)
+		{
+		    int randPollDelay = getRandomDelay();
+		    lastAccelGyroPoll = now + 19 + randPollDelay;
 
-	         accelReading.x = accel_data[0];
-	         accelReading.y = accel_data[1];
-	         accelReading.z = accel_data[2];
-	         if (pushFIFO_Vector(&fifoAccel, accelReading) != 0)
-	             printf("Accelerometer FIFO full, discarding reading.\r\n");
-//	         printf("Accelerometer: X: %f, Y: %f, Z: %f\r\n",
-//	                accel_data[0], accel_data[1], accel_data[2]);
-	         // Event handling for high vibration: If any axis exceeds the threshold, flash an LED.
-	         if (fabs(accel_data[0]) > VIBRATION_THRESHOLD ||
-	             fabs(accel_data[1]) > VIBRATION_THRESHOLD ||
-	             fabs(accel_data[2]) > VIBRATION_THRESHOLD)
-	         {
-	        	 printf("** Vibration warning! **\r\n");
-	        	 HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-	        	 HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
-	         }
-	    }
+		    // Capture accelerometer sensor reading timestamp
+		    uint32_t accelSensorTime = HAL_GetTick();
+
+		    int16_t accel_data_i16[3] = {0};
+		    BSP_ACCELERO_AccGetXYZ(accel_data_i16);
+		    float accel_data[3];
+		    Vector3 accelReading;
+		    for (int i = 0; i < 3; i++)
+		    {
+		         float error = getRandomErrorFactor();
+		         accel_data[i] = (accel_data_i16[i] / 100.0f) * (1.0f + error);
+		    }
+
+		    accelReading.x = accel_data[0];
+		    accelReading.y = accel_data[1];
+		    accelReading.z = accel_data[2];
+		    if (pushFIFO_Vector(&fifoAccel, accelReading) != 0)
+		         printf("Accelerometer FIFO full, discarding reading.\r\n");
+
+		    // Check for vibration alert condition and log delays:
+		    if (fabs(accel_data[0]) > VIBRATION_THRESHOLD ||
+		         fabs(accel_data[1]) > VIBRATION_THRESHOLD ||
+		         fabs(accel_data[2]) > VIBRATION_THRESHOLD)
+		    {
+		         uint32_t alertTime = HAL_GetTick();
+		         uint32_t sensorDelay = alertTime - accelSensorTime;
+		         uint32_t responseDelay = sensorDelay;
+		         printf("** Alert: Vibration warning! Sensor delay: %lu ms, Response delay: %lu ms **\r\n", sensorDelay, responseDelay);
+		         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+		         HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
+		         criticalEventFlag = 1;
+		    }
+		}
 
 	    // Poll Pressure sensor at ~25Hz (40ms + random 10-20ms)
 	    if (now >= lastPressurePoll)
@@ -517,21 +630,27 @@ int main(void)
         {
             transmitFullBuffers();
         }
+        if (transmissionMode == MODE_PREDICTIVE)
+        {
+        	transmitpredictiveBuffers(getMostFilledBuffer());
+        }
+
+        if (transmissionMode == MODE_RANDOM)
+        {
+            transmitRandomBuffer();
+        }
 
         // For RANDOM mode: transmit one randomly selected buffer at fixed intervals.
-        if ((now - lastTransmissionTime) >= TRANSMISSION_INTERVAL)
-        {
-            if (transmissionMode == MODE_RANDOM)
-            {
-                transmitRandomBuffer();
-            }
-            lastTransmissionTime = now;
-        }
+//        if ((now - lastTransmissionTime) >= TRANSMISSION_INTERVAL)
+//        {
+//            if (transmissionMode == MODE_RANDOM)
+//            {
+//                transmitRandomBuffer();
+//            }
+//
+//            lastTransmissionTime = now;
+//        }
 	}
-
-	    // Optional: Toggle LEDs for visual feedback.
-//	    HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-//	    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
 
 	    // A short delay to avoid a busy loop.
 	    HAL_Delay(1);// default polling rate
