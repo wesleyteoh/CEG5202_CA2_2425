@@ -44,7 +44,7 @@ typedef enum {
 TransmissionMode transmissionMode = MODE_FULL_BUFFER; // Default to random mode
 
 // Define the FIFO capacity
-#define SENSOR_BUFFER_CAPACITY 100
+#define SENSOR_BUFFER_CAPACITY 30
 
 #define TRANSMISSION_INTERVAL 1000
 uint32_t lastTransmissionTime = 0;
@@ -288,7 +288,7 @@ void transmitRandomBuffer(void) {
 }
 
 void transmitFullBuffers(void) {
-    uint8_t threshold = (SENSOR_BUFFER_CAPACITY * 95) / 100; // 95% threshold.
+    uint8_t threshold = (SENSOR_BUFFER_CAPACITY * 99) / 100; // 99% threshold.
 
     if (fifoTemp.count >= threshold) {
         transmitEntireFIFO_Float(&fifoTemp, "Temperature");
@@ -375,10 +375,14 @@ int main(void)
   uint32_t randDelayMagneto   = getRandomDelay();
 
   // Initialize last poll timestamps to current time plus base period plus random delay.
-  uint32_t lastTempHumPoll   = now + 1000 + randDelayTempHum;  // 1Hz sensor
-  uint32_t lastAccelGyroPoll = now + 19   + randDelayAccelGyro;  // 52Hz sensor
-  uint32_t lastPressurePoll  = now + 40   + randDelayPressure;   // 25Hz sensor
-  uint32_t lastMagnetoPoll   = now + 25   + randDelayMagneto;    // 40Hz sensor
+//  uint32_t lastTempHumPoll   = now + 1000 + randDelayTempHum;  // 1Hz sensor
+//  uint32_t lastAccelGyroPoll = now + 19   + randDelayAccelGyro;  // 52Hz sensor
+//  uint32_t lastPressurePoll  = now + 40   + randDelayPressure;   // 25Hz sensor
+//  uint32_t lastMagnetoPoll   = now + 25   + randDelayMagneto;    // 40Hz sensor
+  uint32_t lastTempHumPoll   = now + (uint32_t)(1000.0 / 1.0)  + randDelayTempHum;   // 1Hz sensor
+  uint32_t lastAccelGyroPoll = now + (uint32_t)(1000.0 / 52.0) + randDelayAccelGyro; // 52Hz sensor
+  uint32_t lastPressurePoll  = now + (uint32_t)(1000.0 / 25.0) + randDelayPressure;  // 25Hz sensor
+  uint32_t lastMagnetoPoll   = now + (uint32_t)(1000.0 / 40.0) + randDelayMagneto;   // 40Hz sensor
 
 
   /* USER CODE END 2 */
@@ -413,6 +417,10 @@ int main(void)
 	         float humError  = getRandomErrorFactor();
 	         float newTemp = temp * (1.0f + tempError);
 	         float newHumidity = humidity * (1.0f + humError);
+
+	         if (newHumidity > 100.0f) {
+	             newHumidity = 100.0f;
+	         }
 
 	         if (pushFIFO_Float(&fifoTemp, newTemp) != 0)
 	             printf("Temperature FIFO full, discarding reading.\r\n");
