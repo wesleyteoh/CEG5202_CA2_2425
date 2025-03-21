@@ -85,11 +85,12 @@ typedef struct {
 /* USER CODE BEGIN PD */
 
 // Threshold definitions
-#define HIGH_TEMP_THRESHOLD    32.0f    // High temp threshold in degC default 27
+#define HIGH_TEMP_THRESHOLD    27.0f    // High temp threshold in degC default 27
 #define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
 #define HIGH_HUMIDITY_THRESHOLD 101.0f	// Humidity high threshold in %, set at 101 to disable, 70 as spec
-#define VIBRATION_THRESHOLD    11.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
-
+#define VIBRATION_THRESHOLD_X    1.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
+#define VIBRATION_THRESHOLD_Y    1.0f
+#define VIBRATION_THRESHOLD_Z    11.0f
 
 /* USER CODE END PD */
 
@@ -447,6 +448,10 @@ int main(void)
   BSP_GYRO_Init();//Gyroscope init
   BSP_ACCELERO_Init();//Accelerometer init
 
+  HAL_Delay(100);
+  srand(HAL_GetTick());// Seed RNG
+
+
   int getRandomDelay(void)
   {
       return (rand() % 11) + 10;
@@ -457,7 +462,7 @@ int main(void)
   {
       return ((float)rand() / (float)RAND_MAX) * 0.1f - 0.05f;
   }
-//  srand(HAL_GetTick());// Seed RNG
+
   uint32_t now = HAL_GetTick();
 
   // Generate an initial random 10-20ms delay for each sensor
@@ -499,11 +504,11 @@ int main(void)
 
 		if (now >= lastTempHumPoll)
 		{
+			uint32_t sensorReadTime = HAL_GetTick();
 		    int randPollDelay = getRandomDelay();
+//		    printf("%d",randPollDelay);
 		    lastTempHumPoll = now + 1000 + randPollDelay;
 
-		    // Capture sensor reading timestamp
-		    uint32_t sensorReadTime = HAL_GetTick();
 
 		    float temp = BSP_TSENSOR_ReadTemp();
 		    float humidity = BSP_HSENSOR_ReadHumidity();
@@ -527,7 +532,7 @@ int main(void)
 		    if (newTemp > HIGH_TEMP_THRESHOLD)
 		    {
 		         uint32_t alertTime = HAL_GetTick();
-		         uint32_t sensorDelay = alertTime - sensorReadTime;
+		         uint32_t sensorDelay = alertTime - sensorReadTime + randPollDelay;
 		         uint32_t responseDelay = sensorDelay;  // Modify if response time is measured differently
 		         printf("** Alert: %lu High temperature alert: %f C. Sensor delay: %lu ms, Response delay: %lu ms. Activating cooler **\r\n",
 		        		 alertTime,newTemp, sensorDelay, responseDelay);
@@ -535,7 +540,7 @@ int main(void)
 		    if (newHumidity < LOW_HUMIDITY_THRESHOLD)
 		    {
 		         uint32_t alertTime = HAL_GetTick();
-		         uint32_t sensorDelay = alertTime - sensorReadTime;
+		         uint32_t sensorDelay = alertTime - sensorReadTime + randPollDelay;
 		         uint32_t responseDelay = sensorDelay;
 		         printf("** Alert: %lu Low humidity alert: %f%%! Sensor delay: %lu ms, Response delay: %lu ms. Activating Humidifier. **\r\n",
 		        		 alertTime, newHumidity, sensorDelay, responseDelay);
@@ -543,7 +548,7 @@ int main(void)
 		    if (newHumidity > HIGH_HUMIDITY_THRESHOLD)
 		    {
 		         uint32_t alertTime = HAL_GetTick();
-		         uint32_t sensorDelay = alertTime - sensorReadTime;
+		         uint32_t sensorDelay = alertTime - sensorReadTime + randPollDelay;
 		         uint32_t responseDelay = sensorDelay;
 		         printf("** Alert: %lu High humidity alert: %f%%. Sensor delay: %lu ms, Response delay: %lu ms **\r\n",
 		        		 alertTime, newHumidity, sensorDelay, responseDelay);
@@ -576,12 +581,12 @@ int main(void)
 		         printf("Accelerometer FIFO full, discarding reading.\r\n");
 
 		    // Check for vibration alert condition and log delays:
-		    if (fabs(accel_data[0]) > VIBRATION_THRESHOLD ||
-		         fabs(accel_data[1]) > VIBRATION_THRESHOLD ||
-		         fabs(accel_data[2]) > VIBRATION_THRESHOLD)
+		    if (fabs(accel_data[0]) > VIBRATION_THRESHOLD_X ||
+		         fabs(accel_data[1]) > VIBRATION_THRESHOLD_Y ||
+		         fabs(accel_data[2]) > VIBRATION_THRESHOLD_Z)
 		    {
 		         uint32_t alertTime = HAL_GetTick();
-		         uint32_t sensorDelay = alertTime - accelSensorTime;
+		         uint32_t sensorDelay = alertTime - accelSensorTime + randPollDelay;
 		         uint32_t responseDelay = sensorDelay;
 		         printf("** Alert: %lu Vibration warning! Sensor delay: %lu ms, Response delay: %lu ms **\r\n", alertTime, sensorDelay, responseDelay);
 		         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
@@ -653,7 +658,7 @@ int main(void)
 	}
 
 	    // A short delay to avoid a busy loop.
-	    HAL_Delay(1);// default polling rate
+//	    HAL_Delay(1);// default polling rate
 //	    HAL_Delay(200);
 //	    printf("=========\r\n");
   }
