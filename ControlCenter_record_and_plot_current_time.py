@@ -7,9 +7,8 @@ import matplotlib.animation as animation
 import matplotlib.dates as mdates
 import re
 from datetime import datetime, timedelta
-import math
 
-# ----- Serial recording configuration -----
+
 SERIAL_PORT = '/dev/cu.usbmodem103'  
 BAUD_RATE = 115200
 CSV_FILENAME = 'STM32_data.csv'
@@ -22,7 +21,7 @@ data_lines = []
 alert_events = []
 alert_markers = []
 
-# Global statistics for each sensor: accepted and lost counts
+# accepted and lost counts
 sensor_stats = {sensor: {'accepted': 0, 'lost': 0} for sensor in sensors}
 
 def record_data():
@@ -82,16 +81,7 @@ start_time = datetime.now()
 transmission_mode = "FULL BUFFER MODE"  # Default mode
 
 def parse_line(line):
-    """
-    Parses a line from the serial input.
-
-    For sensor data (comma-separated with at least 3 fields):
-      returns {'type': 'data', 'timestamp': datetime, 'sensor': sensor, 'values': [list of floats]}
-
-    For alert lines (starting with "** Alert:"):
-      extracts sensor delay, response delay, and if applicable, accelerometer values.
-      Returns a dictionary with type 'alert'.
-    """
+    # Serial input returns in the following format: {'type': 'data', 'timestamp': datetime, 'sensor': sensor, 'values': [list of floats]}
     global transmission_mode  #
     lower_line = line.lower()
 

@@ -45,10 +45,8 @@ typedef enum {
 	MODE_PREDICTIVE
 } TransmissionMode;
 
-TransmissionMode transmissionMode = MODE_FULL_BUFFER; // Default to random mode
+TransmissionMode transmissionMode = MODE_FULL_BUFFER; // Default to Full buffer mode
 
-// Define the FIFO capacity
-//#define SENSOR_BUFFER_CAPACITY 30
 
 #define TEMP_BUFFER_CAPACITY       5
 #define HUMIDITY_BUFFER_CAPACITY   5
@@ -124,8 +122,6 @@ UART_HandleTypeDef huart3;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
-// Global variable to hold the latest pressure reading (updated at ~25Hz)
-volatile float latestPressureReading = 0.0f;
 
 volatile uint8_t criticalEventFlag = 0;
 volatile uint8_t lowPowerState = 0;
@@ -371,7 +367,6 @@ float getFIFO_timeToFillVector(FIFO_Vector *fifo) {
 
 void transmitFullBuffers(void)
 {
-    // Instead of: uint8_t threshold = (SENSOR_BUFFER_CAPACITY * 99) / 100;
     uint8_t thresholdTemp     = (fifoTemp.capacity * 99) / 100;
     uint8_t thresholdHumidity = (fifoHumidity.capacity * 99) / 100;
     uint8_t thresholdPressure = (fifoPressure.capacity * 99) / 100;
@@ -533,7 +528,7 @@ int main(void)
       return (rand() % 11) + 10;
   }
 
-//  Add random error in sensor outputs
+//  Adds random error in sensor outputs
   float getRandomErrorFactor(void)
   {
       return ((float)rand() / (float)RAND_MAX) * 0.1f - 0.05f;
@@ -548,10 +543,6 @@ int main(void)
   uint32_t randDelayMagneto   = getRandomDelay();
 
   // Initialize last poll timestamps to current time plus base period plus random delay.
-//  uint32_t lastTempHumPoll   = now + 1000 + randDelayTempHum;  // 1Hz sensor
-//  uint32_t lastAccelGyroPoll = now + 19   + randDelayAccelGyro;  // 52Hz sensor
-//  uint32_t lastPressurePoll  = now + 40   + randDelayPressure;   // 25Hz sensor
-//  uint32_t lastMagnetoPoll   = now + 25   + randDelayMagneto;    // 40Hz sensor
   uint32_t lastTempHumPoll   = now + (uint32_t)(1000.0 / 1.0)  + randDelayTempHum;   // 1Hz sensor
   uint32_t lastAccelGyroPoll = now + (uint32_t)(1000.0 / 52.0) + randDelayAccelGyro; // 52Hz sensor
   uint32_t lastPressurePoll  = now + (uint32_t)(1000.0 / 25.0) + randDelayPressure;  // 25Hz sensor
@@ -585,7 +576,6 @@ int main(void)
 		{
 			uint32_t sensorReadTime = HAL_GetTick();
 		    int randPollDelay = getRandomDelay();
-//		    printf("%d",randPollDelay);
 		    lastTempHumPoll = now + 1000 + randPollDelay;
 
 
@@ -680,7 +670,7 @@ int main(void)
 		            strcat(violatedAxes, "Z ");
 		        }
 
-		        // Print the alert including the accelerometer values and which axes are violated.
+		        // Immediately transmit the alert including the accelerometer values and which axes are violated
 		        printf("** Alert: %lu Vibration warning! Sensor delay: %lu ms, Response delay: %lu ms, Accel: %f, %f, %f, Violated: %s**\r\n",
 		               alertTime, sensorDelay, responseDelay,
 		               accel_data[0], accel_data[1], accel_data[2], violatedAxes);
@@ -752,10 +742,9 @@ int main(void)
 //        }
 	}
 
-	    // A short delay to avoid a busy loop.
-//	    HAL_Delay(1);// default polling rate
-//	    HAL_Delay(200);
-//	    printf("=========\r\n");
+
+//	    HAL_Delay(1);
+
 	if (!lowPowerState && ((HAL_GetTick() - lastCriticalAlertTime) > 5000U))
     {
          printf("No critical alerts for 5s. Entering low-power state...\r\n");

@@ -27,25 +27,25 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   ALLOC
  11 .ARM.attributes 00000030  00000000  00000000  0000d29c  2**0
                   CONTENTS, READONLY
- 12 .debug_info   0001c413  00000000  00000000  0000d2cc  2**0
+ 12 .debug_info   0001c3fd  00000000  00000000  0000d2cc  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 13 .debug_abbrev 000041ee  00000000  00000000  000296df  2**0
+ 13 .debug_abbrev 000041ee  00000000  00000000  000296c9  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 14 .debug_aranges 00001a48  00000000  00000000  0002d8d0  2**3
+ 14 .debug_aranges 00001a48  00000000  00000000  0002d8b8  2**3
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 15 .debug_rnglists 00001430  00000000  00000000  0002f318  2**0
+ 15 .debug_rnglists 00001430  00000000  00000000  0002f300  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 16 .debug_macro  0002b221  00000000  00000000  00030748  2**0
+ 16 .debug_macro  0002b221  00000000  00000000  00030730  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   0001f4d2  00000000  00000000  0005b969  2**0
+ 17 .debug_line   0001f4d2  00000000  00000000  0005b951  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    000fb8e5  00000000  00000000  0007ae3b  2**0
+ 18 .debug_str    000fb8cf  00000000  00000000  0007ae23  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  00176720  2**0
+ 19 .comment      00000043  00000000  00000000  001766f2  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  00007df8  00000000  00000000  00176764  2**2
+ 20 .debug_frame  00007df8  00000000  00000000  00176738  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 00000062  00000000  00000000  0017e55c  2**0
+ 21 .debug_line_str 00000062  00000000  00000000  0017e530  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -2019,7 +2019,6 @@ void transmitFullBuffers(void)
  8001444:	b580      	push	{r7, lr}
  8001446:	b082      	sub	sp, #8
  8001448:	af00      	add	r7, sp, #0
-    // Instead of: uint8_t threshold = (SENSOR_BUFFER_CAPACITY * 99) / 100;
     uint8_t thresholdTemp     = (fifoTemp.capacity * 99) / 100;
  800144a:	4b3a      	ldr	r3, [pc, #232]	@ (8001534 <transmitFullBuffers+0xf0>)
  800144c:	7b1b      	ldrb	r3, [r3, #12]
@@ -2656,11 +2655,8 @@ int main(void)
  80018ec:	f7ff ff22 	bl	8001734 <getRandomDelay.0>
  80018f0:	4603      	mov	r3, r0
  80018f2:	f8c7 30e0 	str.w	r3, [r7, #224]	@ 0xe0
+
   // Initialize last poll timestamps to current time plus base period plus random delay.
-//  uint32_t lastTempHumPoll   = now + 1000 + randDelayTempHum;  // 1Hz sensor
-//  uint32_t lastAccelGyroPoll = now + 19   + randDelayAccelGyro;  // 52Hz sensor
-//  uint32_t lastPressurePoll  = now + 40   + randDelayPressure;   // 25Hz sensor
-//  uint32_t lastMagnetoPoll   = now + 25   + randDelayMagneto;    // 40Hz sensor
   uint32_t lastTempHumPoll   = now + (uint32_t)(1000.0 / 1.0)  + randDelayTempHum;   // 1Hz sensor
  80018f6:	f8d7 20f0 	ldr.w	r2, [r7, #240]	@ 0xf0
  80018fa:	f8d7 30ec 	ldr.w	r3, [r7, #236]	@ 0xec
@@ -2762,7 +2758,6 @@ int main(void)
  80019da:	469c      	mov	ip, r3
  80019dc:	f7ff feaa 	bl	8001734 <getRandomDelay.0>
  80019e0:	f8c7 00d4 	str.w	r0, [r7, #212]	@ 0xd4
-//		    printf("%d",randPollDelay);
 		    lastTempHumPoll = now + 1000 + randPollDelay;
  80019e4:	f8d7 20d4 	ldr.w	r2, [r7, #212]	@ 0xd4
  80019e8:	f8d7 30dc 	ldr.w	r3, [r7, #220]	@ 0xdc
@@ -3164,7 +3159,7 @@ int main(void)
  8001dbe:	709a      	strb	r2, [r3, #2]
 		        }
 
-		        // Print the alert including the accelerometer values and which axes are violated.
+		        // Immediately transmit the alert including the accelerometer values and which axes are violated
 		        printf("** Alert: %lu Vibration warning! Sensor delay: %lu ms, Response delay: %lu ms, Accel: %f, %f, %f, Violated: %s**\r\n",
 		               alertTime, sensorDelay, responseDelay,
 		               accel_data[0], accel_data[1], accel_data[2], violatedAxes);
@@ -3382,11 +3377,11 @@ int main(void)
         {
             transmitRandomBuffer();
  8001f88:	f7ff f972 	bl	8001270 <transmitRandomBuffer>
+	}
 
-	    // A short delay to avoid a busy loop.
-//	    HAL_Delay(1);// default polling rate
-//	    HAL_Delay(200);
-//	    printf("=========\r\n");
+
+//	    HAL_Delay(1);
+
 	if (!lowPowerState && ((HAL_GetTick() - lastCriticalAlertTime) > 5000U))
  8001f8c:	4b19      	ldr	r3, [pc, #100]	@ (8001ff4 <main+0x888>)
  8001f8e:	781b      	ldrb	r3, [r3, #0]
