@@ -27,6 +27,7 @@
 #include "../../Drivers/BSP/B-L475E-IOT01/stm32l475e_iot01_accelero.h"
 #include "../../Drivers/BSP/B-L475E-IOT01/stm32l475e_iot01_gyro.h"
 #include "../../Drivers/BSP/B-L475E-IOT01/stm32l475e_iot01_magneto.h"
+#include "../../Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal.h"
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -57,6 +58,7 @@ TransmissionMode transmissionMode = MODE_FULL_BUFFER; // Default to random mode
 
 #define TRANSMISSION_INTERVAL 1000
 uint32_t lastTransmissionTime = 0;
+
 
 // FIFO structure for scalar (float) sensor data (e.g. temperature, humidity, pressure)
 typedef struct {
@@ -93,7 +95,7 @@ typedef struct {
 /* USER CODE BEGIN PD */
 
 // Threshold definitions
-#define HIGH_TEMP_THRESHOLD    27.0f    // High temp threshold in degC default 27
+#define HIGH_TEMP_THRESHOLD    33.0f    // High temp threshold in degC default 27
 #define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
 #define HIGH_HUMIDITY_THRESHOLD 101.0f	// Humidity high threshold in %, set at 101 to disable, 70 as spec
 #define VIBRATION_THRESHOLD_X    2.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
@@ -126,6 +128,8 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 volatile float latestPressureReading = 0.0f;
 
 volatile uint8_t criticalEventFlag = 0;
+volatile uint8_t lowPowerState = 0;
+uint32_t lastCriticalAlertTime = 0;
 
 // Global FIFO buffers for each sensor:
 FIFO_Float fifoTemp;
@@ -175,6 +179,8 @@ static uint32_t  accelTimestamps[ACCEL_BUFFER_CAPACITY];
 // Magnetometer
 static Vector3   magnetoData[MAG_BUFFER_CAPACITY];
 static uint32_t  magnetoTimestamps[MAG_BUFFER_CAPACITY];
+
+
 
 void HandleCriticalEvent(void);
 
@@ -471,7 +477,8 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  __HAL_RCC_PWR_CLK_ENABLE();
+  HAL_PWR_EnableBkUpAccess();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -566,6 +573,9 @@ int main(void)
 	         HandleCriticalEvent();
 	         // After handling, clear the flag so that routine tasks resume.
 	         criticalEventFlag = 0;
+	         lowPowerState = 0;
+	         lastCriticalAlertTime = now;
+	         printf("Critical event detected. Entering normal state...\r\n");
 	     }
 	else{
 	 // Poll Humidity/Temperature sensor at ~1Hz (1000ms + random 10-20ms)
@@ -730,6 +740,11 @@ int main(void)
 //	    HAL_Delay(1);// default polling rate
 //	    HAL_Delay(200);
 //	    printf("=========\r\n");
+	if (!lowPowerState && ((HAL_GetTick() - lastCriticalAlertTime) > 5000U))
+    {
+         printf("No critical alerts for 5s. Entering low-power state...\r\n");
+         lowPowerState = 1;
+    }
   }
   /* USER CODE END WHILE */
 
