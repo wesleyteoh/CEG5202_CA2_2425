@@ -1291,11 +1291,29 @@ void HandleCriticalEvent(void)
           HAL_Delay(100);  // short delay
           HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
           HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
-          HAL_Delay(100);
+//          HAL_Delay(100);
       }
       HAL_Delay(1000);
-      printf("** Critical event resolved. Resuming normal operations **\r\n");
-    // Additional critical event handling (e.g., immediate data transmission or system safety measures) can be done here.
+      // Re-read accelerometer data to check vibration levels.
+      int16_t accel_data_i16[3] = {0};
+      BSP_ACCELERO_AccGetXYZ(accel_data_i16);
+      float accel_x = (float)accel_data_i16[0] / 100.0f;
+      float accel_y = (float)accel_data_i16[1] / 100.0f;
+      float accel_z = (float)accel_data_i16[2] / 100.0f;
+
+      // Check if all axes are within safe thresholds.
+      if ((fabs(accel_x) <= VIBRATION_THRESHOLD_X) &&
+          (fabs(accel_y) <= VIBRATION_THRESHOLD_Y) &&
+          (fabs(accel_z) <= VIBRATION_THRESHOLD_Z))
+      {
+           printf("** Vibration has returned to safe levels. Resuming normal operations. **\r\n");
+           criticalEventFlag = 0;  // Clear the flag as conditions are now safe.
+      }
+      else
+      {
+           printf("** Vibration still above safe thresholds. Maintaining critical state. **\r\n");
+           criticalEventFlag = 1;  // Keep the flag set so the handler is called again.
+      }
 }
 /* USER CODE END 4 */
 

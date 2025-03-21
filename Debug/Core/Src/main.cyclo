@@ -25,5 +25,5 @@
 ../Core/Src/main.c:1021:13:MX_USART3_UART_Init	2
 ../Core/Src/main.c:1056:13:MX_USB_OTG_FS_PCD_Init	2
 ../Core/Src/main.c:1091:13:MX_GPIO_Init	1
-../Core/Src/main.c:1281:6:HandleCriticalEvent	2
-../Core/Src/main.c:1306:6:Error_Handler	1
+../Core/Src/main.c:1281:6:HandleCriticalEvent	5
+../Core/Src/main.c:1324:6:Error_Handler	1
