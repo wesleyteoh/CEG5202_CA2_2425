@@ -47,34 +47,42 @@ typedef enum {
 TransmissionMode transmissionMode = MODE_FULL_BUFFER; // Default to random mode
 
 // Define the FIFO capacity
-#define SENSOR_BUFFER_CAPACITY 30
+//#define SENSOR_BUFFER_CAPACITY 30
+
+#define TEMP_BUFFER_CAPACITY       5
+#define HUMIDITY_BUFFER_CAPACITY   5
+#define PRESSURE_BUFFER_CAPACITY   20
+#define ACCEL_BUFFER_CAPACITY      50
+#define MAG_BUFFER_CAPACITY        50
 
 #define TRANSMISSION_INTERVAL 1000
 uint32_t lastTransmissionTime = 0;
 
 // FIFO structure for scalar (float) sensor data (e.g. temperature, humidity, pressure)
 typedef struct {
-    float data[SENSOR_BUFFER_CAPACITY];
+    float *data;
     uint8_t head;
     uint8_t tail;
     uint8_t count;
-    uint32_t timestamp[SENSOR_BUFFER_CAPACITY];
+    uint32_t *timestamp;
+    uint8_t capacity;
 } FIFO_Float;
 
 // Structure for 3-axis vector data (e.g. accelerometer, magnetometer)
+
 typedef struct {
     float x;
     float y;
     float z;
 } Vector3;
 
-// FIFO structure for vector sensor data
 typedef struct {
-    Vector3 data[SENSOR_BUFFER_CAPACITY];
+    Vector3 *data;
     uint8_t head;
     uint8_t tail;
     uint8_t count;
-    uint32_t timestamp[SENSOR_BUFFER_CAPACITY];
+    uint32_t *timestamp;
+    uint8_t capacity;
 } FIFO_Vector;
 
 
@@ -88,8 +96,8 @@ typedef struct {
 #define HIGH_TEMP_THRESHOLD    27.0f    // High temp threshold in degC default 27
 #define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
 #define HIGH_HUMIDITY_THRESHOLD 101.0f	// Humidity high threshold in %, set at 101 to disable, 70 as spec
-#define VIBRATION_THRESHOLD_X    1.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
-#define VIBRATION_THRESHOLD_Y    1.0f
+#define VIBRATION_THRESHOLD_X    2.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
+#define VIBRATION_THRESHOLD_Y    2.0f
 #define VIBRATION_THRESHOLD_Z    11.0f
 
 /* USER CODE END PD */
@@ -148,6 +156,26 @@ uint8_t LIS3MDL_Data_Ready(uint8_t DeviceAddr); //Magnetometer sensor
 uint8_t LSM6DSL_Gyro_Data_Ready(uint8_t DeviceAddr); //Gyroscope sensor
 uint8_t LSM6DSL_Acc_Data_Ready(uint8_t DeviceAddr); //Accelerometer sensor
 
+// Temperature buffers
+static float     tempData[TEMP_BUFFER_CAPACITY];
+static uint32_t  tempTimestamps[TEMP_BUFFER_CAPACITY];
+
+// Humidity
+static float     humidityData[HUMIDITY_BUFFER_CAPACITY];
+static uint32_t  humidityTimestamps[HUMIDITY_BUFFER_CAPACITY];
+
+// Pressure
+static float     pressureData[PRESSURE_BUFFER_CAPACITY];
+static uint32_t  pressureTimestamps[PRESSURE_BUFFER_CAPACITY];
+
+// Accelerometer
+static Vector3   accelData[ACCEL_BUFFER_CAPACITY];
+static uint32_t  accelTimestamps[ACCEL_BUFFER_CAPACITY];
+
+// Magnetometer
+static Vector3   magnetoData[MAG_BUFFER_CAPACITY];
+static uint32_t  magnetoTimestamps[MAG_BUFFER_CAPACITY];
+
 void HandleCriticalEvent(void);
 
 //Blue button triggers interrupt
@@ -161,52 +189,59 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 }
 
 // FIFO push functions: they return -1 if the FIFO is full (i.e. new data is discarded).
-int pushFIFO_Float(FIFO_Float *fifo, float value) {
-    if (fifo->count >= SENSOR_BUFFER_CAPACITY) {
-        // Buffer is full – discard new data
+int pushFIFO_Float(FIFO_Float *fifo, float value)
+{
+    // Check if full
+    if (fifo->count >= fifo->capacity) {
         return -1;
     }
     fifo->data[fifo->tail] = value;
-    fifo->timestamp[fifo->tail] = HAL_GetTick();  // Save current timestamp
-    fifo->tail = (fifo->tail + 1) % SENSOR_BUFFER_CAPACITY;
+    fifo->timestamp[fifo->tail] = HAL_GetTick();
+
+    fifo->tail = (fifo->tail + 1) % fifo->capacity;
     fifo->count++;
     return 0;
 }
 
-int pushFIFO_Vector(FIFO_Vector *fifo, Vector3 value) {
-    if (fifo->count >= SENSOR_BUFFER_CAPACITY) {
+int popFIFO_Float(FIFO_Float *fifo, float *value, uint32_t *timestamp)
+{
+    if (fifo->count == 0) {
+        return -1;
+    }
+    *value     = fifo->data[fifo->head];
+    *timestamp = fifo->timestamp[fifo->head];
+
+    fifo->head = (fifo->head + 1) % fifo->capacity;
+    fifo->count--;
+    return 0;
+}
+
+// Same idea for vectors:
+int pushFIFO_Vector(FIFO_Vector *fifo, Vector3 value)
+{
+    if (fifo->count >= fifo->capacity) {
         return -1;
     }
     fifo->data[fifo->tail] = value;
-    fifo->timestamp[fifo->tail] = HAL_GetTick();  // Save current timestamp
-    fifo->tail = (fifo->tail + 1) % SENSOR_BUFFER_CAPACITY;
+    fifo->timestamp[fifo->tail] = HAL_GetTick();
+
+    fifo->tail = (fifo->tail + 1) % fifo->capacity;
     fifo->count++;
     return 0;
 }
 
-// FIFO pop functions
-int popFIFO_Float(FIFO_Float *fifo, float *value, uint32_t *timestamp) {
-    if (fifo->count == 0) {
-        return -1; // Empty
-    }
-    *value = fifo->data[fifo->head];
-    *timestamp = fifo->timestamp[fifo->head];
-    fifo->head = (fifo->head + 1) % SENSOR_BUFFER_CAPACITY;
-    fifo->count--;
-    return 0;
-}
-
-int popFIFO_Vector(FIFO_Vector *fifo, Vector3 *value, uint32_t *timestamp) {
+int popFIFO_Vector(FIFO_Vector *fifo, Vector3 *value, uint32_t *timestamp)
+{
     if (fifo->count == 0) {
         return -1;
     }
-    *value = fifo->data[fifo->head];
+    *value     = fifo->data[fifo->head];
     *timestamp = fifo->timestamp[fifo->head];
-    fifo->head = (fifo->head + 1) % SENSOR_BUFFER_CAPACITY;
+
+    fifo->head = (fifo->head + 1) % fifo->capacity;
     fifo->count--;
     return 0;
 }
-
 void transmitEntireFIFO_Float(FIFO_Float *fifo, const char *sensorName) {
     float value;
     uint32_t timestamp;
@@ -304,39 +339,48 @@ void transmitRandomBuffer(void) {
 
 float getFIFO_timeToFillFloat(FIFO_Float *fifo) {
     if (fifo->count == 0) {
-        return -1; // Empty
+        return -1.0f; // Empty
     }
-	 float inputRate = (HAL_GetTick() - fifo->timestamp[fifo->tail]) / (fifo->count); // Get the rate of input/frequency
-	 uint16_t remainingCapacity = SENSOR_BUFFER_CAPACITY - fifo->count; // get the remaining unoccupied buffer
-	 return remainingCapacity / inputRate; // Calculate the time taken to fill the remaining cap
+    // Use (HAL_GetTick() - fifo->timestamp[fifo->tail]) and fifo->count
+    // to estimate average time between samples.
+    float inputRate = (HAL_GetTick() - fifo->timestamp[fifo->tail]) / (float)fifo->count;
+
+    // Get remaining unoccupied slots from this FIFO’s capacity
+    uint16_t remainingCapacity = fifo->capacity - fifo->count;
+
+    // Time to fill the remaining slots = remaining slots * average time per sample,
+    return remainingCapacity / inputRate;
 }
+
 float getFIFO_timeToFillVector(FIFO_Vector *fifo) {
     if (fifo->count == 0) {
-        return -1; // Empty
+        return -1.0f; // Empty
     }
-	 float inputRate = (HAL_GetTick() - fifo->timestamp[fifo->tail]) / (fifo->count); // Get the rate of input/frequency
-	 uint16_t remainingCapacity = SENSOR_BUFFER_CAPACITY - fifo->count; // get the remaining unoccupied buffer
-	 return remainingCapacity / inputRate; // Calculate the time taken to fill the remaining cap
+    float inputRate = (HAL_GetTick() - fifo->timestamp[fifo->tail]) / (float)fifo->count;
+    uint16_t remainingCapacity = fifo->capacity - fifo->count;
+    return remainingCapacity / inputRate;
 }
 
 
 
-void transmitFullBuffers(void) {
-    uint8_t threshold = (SENSOR_BUFFER_CAPACITY * 99) / 100; // 99% threshold.
+void transmitFullBuffers(void)
+{
+    // Instead of: uint8_t threshold = (SENSOR_BUFFER_CAPACITY * 99) / 100;
+    uint8_t thresholdTemp     = (fifoTemp.capacity * 99) / 100;
+    uint8_t thresholdHumidity = (fifoHumidity.capacity * 99) / 100;
+    uint8_t thresholdPressure = (fifoPressure.capacity * 99) / 100;
+    uint8_t thresholdAccel    = (fifoAccel.capacity    * 99) / 100;
+    uint8_t thresholdMagneto  = (fifoMagneto.capacity  * 100) / 100;
 
-    if (fifoTemp.count >= threshold) {
+    if (fifoTemp.count >= thresholdTemp) {
         transmitEntireFIFO_Float(&fifoTemp, "Temperature");
-    }
-    else if (fifoHumidity.count >= threshold) {
+    } else if (fifoHumidity.count >= thresholdHumidity) {
         transmitEntireFIFO_Float(&fifoHumidity, "Humidity");
-    }
-    else if (fifoPressure.count >= threshold) {
+    } else if (fifoPressure.count >= thresholdPressure) {
         transmitEntireFIFO_Float(&fifoPressure, "Pressure");
-    }
-    else if (fifoAccel.count >= threshold) {
+    } else if (fifoAccel.count >= thresholdAccel) {
         transmitEntireFIFO_Vector(&fifoAccel, "Accelerometer");
-    }
-    else if (fifoMagneto.count >= threshold) {
+    } else if (fifoMagneto.count >= thresholdMagneto) {
         transmitEntireFIFO_Vector(&fifoMagneto, "Magnetometer");
     }
 }
@@ -448,7 +492,32 @@ int main(void)
   BSP_GYRO_Init();//Gyroscope init
   BSP_ACCELERO_Init();//Accelerometer init
 
-  HAL_Delay(100);
+  fifoTemp.data      = tempData;
+  fifoTemp.timestamp = tempTimestamps;
+  fifoTemp.capacity  = TEMP_BUFFER_CAPACITY;
+  fifoTemp.head = fifoTemp.tail = fifoTemp.count = 0;
+
+  fifoHumidity.data      = humidityData;
+  fifoHumidity.timestamp = humidityTimestamps;
+  fifoHumidity.capacity  = HUMIDITY_BUFFER_CAPACITY;
+  fifoHumidity.head = fifoHumidity.tail = fifoHumidity.count = 0;
+
+      fifoPressure.data      = pressureData;
+      fifoPressure.timestamp = pressureTimestamps;
+      fifoPressure.capacity  = PRESSURE_BUFFER_CAPACITY;
+      fifoPressure.head = fifoPressure.tail = fifoPressure.count = 0;
+
+      fifoAccel.data      = accelData;
+      fifoAccel.timestamp = accelTimestamps;
+      fifoAccel.capacity  = ACCEL_BUFFER_CAPACITY;
+      fifoAccel.head = fifoAccel.tail = fifoAccel.count = 0;
+
+      fifoMagneto.data      = magnetoData;
+      fifoMagneto.timestamp = magnetoTimestamps;
+      fifoMagneto.capacity  = MAG_BUFFER_CAPACITY;
+      fifoMagneto.head = fifoMagneto.tail = fifoMagneto.count = 0;
+
+//  HAL_Delay(100);
   srand(HAL_GetTick());// Seed RNG
 
 
@@ -645,7 +714,7 @@ int main(void)
             transmitRandomBuffer();
         }
 
-        // For RANDOM mode: transmit one randomly selected buffer at fixed intervals.
+        // For simulation to test data loss due to buffer full
 //        if ((now - lastTransmissionTime) >= TRANSMISSION_INTERVAL)
 //        {
 //            if (transmissionMode == MODE_RANDOM)
