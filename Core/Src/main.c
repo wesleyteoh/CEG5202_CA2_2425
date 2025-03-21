@@ -47,14 +47,24 @@ typedef enum {
 
 TransmissionMode transmissionMode = MODE_FULL_BUFFER; // Default to Full buffer mode
 
+/*
+ * ODR values:
+ *
+ * humidity/temp: 1Hz
+ * accel/gyro: 52Hz
+ * pressure: 25Hz
+ * magnetometer: 40Hz
+ */
+
 
 #define TEMP_BUFFER_CAPACITY       5
 #define HUMIDITY_BUFFER_CAPACITY   5
-#define PRESSURE_BUFFER_CAPACITY   20
 #define ACCEL_BUFFER_CAPACITY      50
-#define MAG_BUFFER_CAPACITY        50
+#define GYRO_BUFFER_CAPACITY       50
+#define PRESSURE_BUFFER_CAPACITY   20
+#define MAG_BUFFER_CAPACITY        40
 
-#define TRANSMISSION_INTERVAL 1000
+#define TRANSMISSION_INTERVAL 1000 //used to test when using interval transmissions for data loss
 uint32_t lastTransmissionTime = 0;
 
 
@@ -132,6 +142,7 @@ FIFO_Float fifoTemp;
 FIFO_Float fifoHumidity;
 FIFO_Float fifoPressure;
 FIFO_Vector fifoAccel;
+FIFO_Vector fifoGyro;
 FIFO_Vector fifoMagneto;
 
 /* USER CODE END PV */
@@ -172,6 +183,10 @@ static uint32_t  pressureTimestamps[PRESSURE_BUFFER_CAPACITY];
 static Vector3   accelData[ACCEL_BUFFER_CAPACITY];
 static uint32_t  accelTimestamps[ACCEL_BUFFER_CAPACITY];
 
+// Gyro data and timestamps arrays.
+static Vector3 gyroData[GYRO_BUFFER_CAPACITY];
+static uint32_t gyroTimestamps[GYRO_BUFFER_CAPACITY];
+
 // Magnetometer
 static Vector3   magnetoData[MAG_BUFFER_CAPACITY];
 static uint32_t  magnetoTimestamps[MAG_BUFFER_CAPACITY];
@@ -190,7 +205,7 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	}
 }
 
-// FIFO push functions: they return -1 if the FIFO is full (i.e. new data is discarded).
+// FIFO push functions: they return -1 if the FIFO is full
 int pushFIFO_Float(FIFO_Float *fifo, float value)
 {
     // Check if full
@@ -263,16 +278,6 @@ void transmitEntireFIFO_Vector(FIFO_Vector *fifo, const char *sensorName) {
 }
 
 
-/*
- * ODR values:
- *
- * humidity/temp: 1Hz
- * accel/gyro: 52Hz
- * pressure: 25Hz
- * magnetometer: 40Hz
- */
-
-
 
 
 extern void initialise_monitor_handles(void);
@@ -307,7 +312,7 @@ void toggleTransmissionMode(void) {
 }
 
 void transmitRandomBuffer(void) {
-    int choice = rand() % 5; // Randomly select one of the 5 sensor buffers
+    int choice = rand() % 6; // Randomly select one of the 6 sensor buffers
     switch (choice) {
         case 0:
             if (fifoTemp.count > 0) {
@@ -330,6 +335,11 @@ void transmitRandomBuffer(void) {
             }
             break;
         case 4:
+            if (fifoGyro.count > 0) {
+                transmitEntireFIFO_Vector(&fifoGyro, "Gyroscope");
+            }
+            break;
+        case 5:
             if (fifoMagneto.count > 0) {
                 transmitEntireFIFO_Vector(&fifoMagneto, "Magnetometer");
             }
@@ -370,8 +380,10 @@ void transmitFullBuffers(void)
     uint8_t thresholdTemp     = (fifoTemp.capacity * 99) / 100;
     uint8_t thresholdHumidity = (fifoHumidity.capacity * 99) / 100;
     uint8_t thresholdPressure = (fifoPressure.capacity * 99) / 100;
-    uint8_t thresholdAccel    = (fifoAccel.capacity    * 99) / 100;
-    uint8_t thresholdMagneto  = (fifoMagneto.capacity  * 100) / 100;
+    uint8_t thresholdAccel    = (fifoAccel.capacity    * 90) / 100;
+    uint8_t thresholdGyro  = (fifoGyro.capacity  * 90) / 100;
+    uint8_t thresholdMagneto  = (fifoMagneto.capacity  * 99) / 100;
+
 
     if (fifoTemp.count >= thresholdTemp) {
         transmitEntireFIFO_Float(&fifoTemp, "Temperature");
@@ -383,6 +395,8 @@ void transmitFullBuffers(void)
         transmitEntireFIFO_Vector(&fifoAccel, "Accelerometer");
     } else if (fifoMagneto.count >= thresholdMagneto) {
         transmitEntireFIFO_Vector(&fifoMagneto, "Magnetometer");
+    } else if (fifoGyro.count >= thresholdGyro) {
+        transmitEntireFIFO_Vector(&fifoGyro, "Gyroscope");
     }
 }
 
@@ -410,13 +424,6 @@ char* getMostFilledBuffer(void) {
       minBuffer = "Pressure";
      }
     }
-    if (fifoMagneto.count > 0) {
-     float timeToFill = getFIFO_timeToFillVector(&fifoMagneto);
-     if (minTimeToFill > timeToFill) {
-      minTimeToFill = timeToFill;
-      minBuffer = "Magneto";
-     }
-    }
     if (fifoAccel.count > 0) {
      float timeToFill = getFIFO_timeToFillVector(&fifoAccel);
      if (minTimeToFill > timeToFill) {
@@ -424,6 +431,21 @@ char* getMostFilledBuffer(void) {
       minBuffer = "Accelerometer";
      }
     }
+    if (fifoMagneto.count > 0) {
+     float timeToFill = getFIFO_timeToFillVector(&fifoMagneto);
+     if (minTimeToFill > timeToFill) {
+      minTimeToFill = timeToFill;
+      minBuffer = "Magneto";
+     }
+    }
+    if (fifoGyro.count > 0) {
+     float timeToFill = getFIFO_timeToFillVector(&fifoGyro);
+     if (minTimeToFill > timeToFill) {
+      minTimeToFill = timeToFill;
+      minBuffer = "Gyro";
+     }
+    }
+
 
     return minBuffer;
 }
@@ -438,6 +460,8 @@ void transmitpredictiveBuffers(const char* selectedBuffer) {
   transmitEntireFIFO_Float(&fifoHumidity, "Humidity");
  } else if (strcmp(selectedBuffer,"Pressure") == 0) {
   transmitEntireFIFO_Float(&fifoPressure, "Pressure");
+ } else if (strcmp(selectedBuffer,"Gyro") == 0) {
+  transmitEntireFIFO_Vector(&fifoGyro, "Gyroscope");
  }  else if (strcmp(selectedBuffer,"Accelerometer") == 0) {
   transmitEntireFIFO_Vector(&fifoAccel, "Accelerometer");
  } else if (strcmp(selectedBuffer,"Magneto") == 0) {
@@ -504,20 +528,25 @@ int main(void)
   fifoHumidity.capacity  = HUMIDITY_BUFFER_CAPACITY;
   fifoHumidity.head = fifoHumidity.tail = fifoHumidity.count = 0;
 
-      fifoPressure.data      = pressureData;
-      fifoPressure.timestamp = pressureTimestamps;
-      fifoPressure.capacity  = PRESSURE_BUFFER_CAPACITY;
-      fifoPressure.head = fifoPressure.tail = fifoPressure.count = 0;
+  fifoPressure.data      = pressureData;
+  fifoPressure.timestamp = pressureTimestamps;
+  fifoPressure.capacity  = PRESSURE_BUFFER_CAPACITY;
+  fifoPressure.head = fifoPressure.tail = fifoPressure.count = 0;
 
-      fifoAccel.data      = accelData;
-      fifoAccel.timestamp = accelTimestamps;
-      fifoAccel.capacity  = ACCEL_BUFFER_CAPACITY;
-      fifoAccel.head = fifoAccel.tail = fifoAccel.count = 0;
+  fifoAccel.data      = accelData;
+  fifoAccel.timestamp = accelTimestamps;
+  fifoAccel.capacity  = ACCEL_BUFFER_CAPACITY;
+  fifoAccel.head = fifoAccel.tail = fifoAccel.count = 0;
 
-      fifoMagneto.data      = magnetoData;
-      fifoMagneto.timestamp = magnetoTimestamps;
-      fifoMagneto.capacity  = MAG_BUFFER_CAPACITY;
-      fifoMagneto.head = fifoMagneto.tail = fifoMagneto.count = 0;
+  fifoGyro.data      = gyroData;
+  fifoGyro.timestamp = gyroTimestamps;
+  fifoGyro.capacity  = GYRO_BUFFER_CAPACITY;
+  fifoGyro.head = fifoGyro.tail = fifoGyro.count = 0;
+
+  fifoMagneto.data      = magnetoData;
+  fifoMagneto.timestamp = magnetoTimestamps;
+  fifoMagneto.capacity  = MAG_BUFFER_CAPACITY;
+  fifoMagneto.head = fifoMagneto.tail = fifoMagneto.count = 0;
 
 //  HAL_Delay(100);
   srand(HAL_GetTick());// Seed RNG
@@ -562,11 +591,8 @@ int main(void)
 	if (criticalEventFlag)
 		{
 	         HandleCriticalEvent();
-	         // After handling, clear the flag so that routine tasks resume.
-	         criticalEventFlag = 0;
 	         lowPowerState = 0;
 	         lastCriticalAlertTime = now;
-	         printf("Critical event detected. Entering normal state...\r\n");
 	     }
 	else{
 	 // Poll Humidity/Temperature sensor at ~1Hz (1000ms + random 10-20ms)
@@ -678,6 +704,21 @@ int main(void)
 		        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
 		        criticalEventFlag = 1;
 		    }
+		    // --- Read Gyroscope Data ---
+		        int16_t gyro_data_i16[3] = {0};
+		        BSP_GYRO_GetXYZ(gyro_data_i16);
+		        float gyro_data[3];
+		        Vector3 gyroReading;
+		        for (int i = 0; i < 3; i++)
+		        {
+		             float error = getRandomErrorFactor();
+		             gyro_data[i] = (gyro_data_i16[i] / 100.0f) * (1.0f + error);
+		        }
+		        gyroReading.x = gyro_data[0];
+		        gyroReading.y = gyro_data[1];
+		        gyroReading.z = gyro_data[2];
+		        if (pushFIFO_Vector(&fifoGyro, gyroReading) != 0)
+		             printf("Gyroscope FIFO full, discarding reading.\r\n");
 		}
 
 	    // Poll Pressure sensor at ~25Hz (40ms + random 10-20ms)
@@ -743,7 +784,7 @@ int main(void)
 	}
 
 
-//	    HAL_Delay(1);
+	    HAL_Delay(1);
 
 	if (!lowPowerState && ((HAL_GetTick() - lastCriticalAlertTime) > 5000U))
     {
@@ -1280,10 +1321,8 @@ static void MX_GPIO_Init(void)
 /* Critical Event Handling Function */
 void HandleCriticalEvent(void)
 {
-    // Example: Flash LEDs and print a warning.
     printf("** Critical event detected! Pausing routine tasks. **\r\n");
 
-    // Non-blocking LED flashing can be done via timing (here, for illustration, we use blocking delays)
       for (int i = 0; i < 5; i++)
       {
           HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
@@ -1294,25 +1333,25 @@ void HandleCriticalEvent(void)
 //          HAL_Delay(100);
       }
       HAL_Delay(1000);
-      // Re-read accelerometer data to check vibration levels.
+      // Re-read accelerometer data to check vibration levels
       int16_t accel_data_i16[3] = {0};
       BSP_ACCELERO_AccGetXYZ(accel_data_i16);
       float accel_x = (float)accel_data_i16[0] / 100.0f;
       float accel_y = (float)accel_data_i16[1] / 100.0f;
       float accel_z = (float)accel_data_i16[2] / 100.0f;
 
-      // Check if all axes are within safe thresholds.
+      // Check if all axes are within safe thresholds
       if ((fabs(accel_x) <= VIBRATION_THRESHOLD_X) &&
           (fabs(accel_y) <= VIBRATION_THRESHOLD_Y) &&
           (fabs(accel_z) <= VIBRATION_THRESHOLD_Z))
       {
            printf("** Vibration has returned to safe levels. Resuming normal operations. **\r\n");
-           criticalEventFlag = 0;  // Clear the flag as conditions are now safe.
+           criticalEventFlag = 0;  // Clear the flag as conditions are now safe
       }
       else
       {
            printf("** Vibration still above safe thresholds. Maintaining critical state. **\r\n");
-           criticalEventFlag = 1;  // Keep the flag set so the handler is called again.
+           criticalEventFlag = 1;  // Keep the flag set
       }
 }
 /* USER CODE END 4 */

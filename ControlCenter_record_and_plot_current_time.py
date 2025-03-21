@@ -8,14 +8,13 @@ import matplotlib.dates as mdates
 import re
 from datetime import datetime, timedelta
 
-
 SERIAL_PORT = '/dev/cu.usbmodem103'  
 BAUD_RATE = 115200
 CSV_FILENAME = 'STM32_data.csv'
 ALERT_LOG_FILENAME = 'alert_log.txt'
 
-sensors = ['temperature', 'humidity', 'pressure', 'magnetometer', 'accelerometer']
-
+# Updated sensor list includes gyroscope
+sensors = ['temperature', 'humidity', 'pressure', 'magnetometer', 'accelerometer', 'gyroscope']
 
 data_lines = []
 alert_events = []
@@ -81,8 +80,7 @@ start_time = datetime.now()
 transmission_mode = "FULL BUFFER MODE"  # Default mode
 
 def parse_line(line):
-    # Serial input returns in the following format: {'type': 'data', 'timestamp': datetime, 'sensor': sensor, 'values': [list of floats]}
-    global transmission_mode  #
+    global transmission_mode
     lower_line = line.lower()
 
     # Checks for tx mode updates
@@ -97,13 +95,12 @@ def parse_line(line):
         return {'type': 'mode_update', 'mode': transmission_mode}
 
     if line.strip().startswith("** Alert:"):
-        # Extract board timestamp from alert message.
         timestamp_match = re.search(r"\*\* Alert:\s*(\d+)", line)
         if timestamp_match:
             board_timestamp = float(timestamp_match.group(1))
             alert_timestamp = start_time + timedelta(milliseconds=board_timestamp)
         else:
-            alert_timestamp = datetime.now()  # fallback in case timestamp is not found
+            alert_timestamp = datetime.now()  # fallback if no timestamp found
 
         with open(ALERT_LOG_FILENAME, "a") as alert_log:
             alert_log.write(f"{alert_timestamp.isoformat()} - {line}\n")
@@ -133,7 +130,6 @@ def parse_line(line):
                 sensor_value = float(match.group(1))
         elif "vibration" in lower_line:
             alert_type = "vibration"
-            # Look for accelerometer values (expected pattern "accel: <val>, <val>, <val>")
             accel_match = re.search(r"accel:\s*([-\d\.]+)\s*,\s*([-\d\.]+)\s*,\s*([-\d\.]+)", lower_line)
             if accel_match:
                 sensor_value = (float(accel_match.group(1)),
@@ -141,16 +137,11 @@ def parse_line(line):
                                 float(accel_match.group(3)))
             else:
                 sensor_value = None
-            # Extract violated axes (expected pattern "violated: X Y" etc)
-            print(lower_line)
             violated_axes_match = re.search(r"violated:\s*([a-z ]+)", lower_line)
-            # print("violated_axes_match", violated_axes_match)
             if violated_axes_match:
                 violated_axes = violated_axes_match.group(1).strip()
-                # print("violated!", violated_axes)
             else:
                 violated_axes = None
-            # print(f"Vibration alert: {sensor_value} (Violated axes: {violated_axes})")
 
         return {
             'type': 'alert',
@@ -163,7 +154,7 @@ def parse_line(line):
             'message': line.strip()
         }
     else:
-        # Process sensor data: expected format: sensor,timestamp,value1,value2,...
+        # Expected format: sensor,timestamp,value1,value2,...
         parts = line.split(',')
         try:
             raw_timestamp = parts[0].strip()
@@ -181,10 +172,12 @@ def parse_line(line):
         except (ValueError, IndexError):
             return {'type': 'event', 'message': line.strip()}
 
+# Initialize sensor data and time dictionaries.
+# For 3-axis sensors, store data as dicts with keys "x", "y", and "z".
 sensor_data = {}
 sensor_time = {}
 for sensor in sensors:
-    if sensor == "accelerometer":
+    if sensor in ["accelerometer", "gyroscope"]:
         sensor_data[sensor] = {"x": [], "y": [], "z": []}
         sensor_time[sensor] = []
     else:
@@ -197,13 +190,13 @@ fig.suptitle("Real-time Sensor Data")
 lines = {}
 loss_text = {}
 
-TIME_WINDOW = 100  # last 100 seconds
+TIME_WINDOW = 100  # seconds
 
 for i, sensor in enumerate(sensors):
     ax = axs[i]
     ax.set_ylabel(sensor.capitalize())
     ax.grid(True)
-    if sensor == "accelerometer":
+    if sensor in ["accelerometer", "gyroscope"]:
         line_x, = ax.plot([], [], marker='o', linestyle='-', markersize=4, label="X")
         line_y, = ax.plot([], [], marker='o', linestyle='-', markersize=4, label="Y")
         line_z, = ax.plot([], [], marker='o', linestyle='-', markersize=4, label="Z")
@@ -239,6 +232,12 @@ def update_plot(frame):
                     sensor_data["accelerometer"]["y"].append(parsed["values"][1])
                     sensor_data["accelerometer"]["z"].append(parsed["values"][2])
                     sensor_time["accelerometer"].append(parsed["timestamp"])
+            elif parsed['sensor'] == "gyroscope":
+                if parsed['values'] and len(parsed['values']) >= 3:
+                    sensor_data["gyroscope"]["x"].append(parsed["values"][0])
+                    sensor_data["gyroscope"]["y"].append(parsed["values"][1])
+                    sensor_data["gyroscope"]["z"].append(parsed["values"][2])
+                    sensor_time["gyroscope"].append(parsed["timestamp"])
             elif parsed['sensor'] in sensors:
                 if parsed['values'] and parsed['values'][0] is not None:
                     sensor_data[parsed['sensor']].append(parsed["values"][0])
@@ -251,24 +250,24 @@ def update_plot(frame):
         elif parsed['type'] == 'event':
             print(f"[EVENT] {parsed['message']}")
 
-    # Remove alert events older than the plotting window.
+    # Remove old alert events.
     cutoff = datetime.now() - timedelta(seconds=TIME_WINDOW)
     alert_events[:] = [event for event in alert_events if event['timestamp'] >= cutoff]
 
     # Update sensor plots.
     for sensor in sensors:
         ax = axs[sensors.index(sensor)]
-        if sensor == "accelerometer":
-            line_x, line_y, line_z = lines["accelerometer"]
-            line_x.set_data(sensor_time["accelerometer"], sensor_data["accelerometer"]["x"])
-            line_y.set_data(sensor_time["accelerometer"], sensor_data["accelerometer"]["y"])
-            line_z.set_data(sensor_time["accelerometer"], sensor_data["accelerometer"]["z"])
-            all_data = sensor_data["accelerometer"]["x"] + sensor_data["accelerometer"]["y"] + sensor_data["accelerometer"]["z"]
+        if sensor in ["accelerometer", "gyroscope"]:
+            line_x, line_y, line_z = lines[sensor]
+            line_x.set_data(sensor_time[sensor], sensor_data[sensor]["x"])
+            line_y.set_data(sensor_time[sensor], sensor_data[sensor]["y"])
+            line_z.set_data(sensor_time[sensor], sensor_data[sensor]["z"])
+            all_data = sensor_data[sensor]["x"] + sensor_data[sensor]["y"] + sensor_data[sensor]["z"]
             if all_data:
                 y_pad = (max(all_data) - min(all_data)) * 0.1 or 1
                 ax.set_ylim(min(all_data) - y_pad, max(all_data) + y_pad)
-            if sensor_time["accelerometer"]:
-                latest_ts = sensor_time["accelerometer"][-1]
+            if sensor_time[sensor]:
+                latest_ts = sensor_time[sensor][-1]
                 x_min = latest_ts - timedelta(seconds=TIME_WINDOW)
                 ax.set_xlim(x_min, latest_ts)
         else:
@@ -286,16 +285,12 @@ def update_plot(frame):
         total = stats['accepted'] + stats['lost'] or 1
         loss_text[sensor].set_text(f"Loss: {stats['lost'] / total * 100:.1f}%")
         
-
-    # For each vibration alert, add markers on the accelerometer plot.
+    # Mark vibration alerts on the accelerometer plot.
     for event in alert_events:
         if event.get('alert_type') == 'vibration':
             ax_acc = axs[sensors.index('accelerometer')]
-            # If violated_axes info is available, mark each axis with a different color.
-
             if event.get('violated_axes'):
                 axes_violated = event['violated_axes'].split()
-                
                 for axis in axes_violated:
                     if axis == 'x':
                         y_val = sensor_data["accelerometer"]["x"][-1] if sensor_data["accelerometer"]["x"] else 0
@@ -310,13 +305,18 @@ def update_plot(frame):
                         marker = ax_acc.plot(event['timestamp'], y_val, 'ro', markersize=8)[0]
                         alert_markers.append(marker)
             else:
-                # Fallback: use the x-axis value.
                 y_val = sensor_data["accelerometer"]["z"][-1] if sensor_data["accelerometer"]["z"] else 0
                 marker = ax_acc.plot(event['timestamp'], y_val, 'ro', markersize=8)[0]
                 alert_markers.append(marker)
         
-    return list(sum(([l] if not isinstance(l, tuple) else list(l) for l in lines.values()), [])) \
-           + list(loss_text.values()) + alert_markers
+    # Return all plotted objects.
+    all_lines = []
+    for sensor_val in lines.values():
+        if isinstance(sensor_val, tuple):
+            all_lines.extend(sensor_val)
+        else:
+            all_lines.append(sensor_val)
+    return all_lines + list(loss_text.values()) + alert_markers
 
 ani = animation.FuncAnimation(fig, update_plot, interval=1000, blit=False)
 
