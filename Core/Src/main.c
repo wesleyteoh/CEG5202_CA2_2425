@@ -661,16 +661,32 @@ int main(void)
 
 		    // Check for vibration alert condition and log delays:
 		    if (fabs(accel_data[0]) > VIBRATION_THRESHOLD_X ||
-		         fabs(accel_data[1]) > VIBRATION_THRESHOLD_Y ||
-		         fabs(accel_data[2]) > VIBRATION_THRESHOLD_Z)
+		        fabs(accel_data[1]) > VIBRATION_THRESHOLD_Y ||
+		        fabs(accel_data[2]) > VIBRATION_THRESHOLD_Z)
 		    {
-		         uint32_t alertTime = HAL_GetTick();
-		         uint32_t sensorDelay = alertTime - accelSensorTime + randPollDelay;
-		         uint32_t responseDelay = sensorDelay;
-		         printf("** Alert: %lu Vibration warning! Sensor delay: %lu ms, Response delay: %lu ms **\r\n", alertTime, sensorDelay, responseDelay);
-		         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-		         HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
-		         criticalEventFlag = 1;
+		        uint32_t alertTime = HAL_GetTick();
+		        uint32_t sensorDelay = alertTime - accelSensorTime + randPollDelay;
+		        uint32_t responseDelay = sensorDelay;
+
+		        // Build a string of violated axes.
+		        char violatedAxes[32] = "";
+		        if (fabs(accel_data[0]) > VIBRATION_THRESHOLD_X) {
+		            strcat(violatedAxes, "X ");
+		        }
+		        if (fabs(accel_data[1]) > VIBRATION_THRESHOLD_Y) {
+		            strcat(violatedAxes, "Y ");
+		        }
+		        if (fabs(accel_data[2]) > VIBRATION_THRESHOLD_Z) {
+		            strcat(violatedAxes, "Z ");
+		        }
+
+		        // Print the alert including the accelerometer values and which axes are violated.
+		        printf("** Alert: %lu Vibration warning! Sensor delay: %lu ms, Response delay: %lu ms, Accel: %f, %f, %f, Violated: %s**\r\n",
+		               alertTime, sensorDelay, responseDelay,
+		               accel_data[0], accel_data[1], accel_data[2], violatedAxes);
+		        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+		        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
+		        criticalEventFlag = 1;
 		    }
 		}
 
