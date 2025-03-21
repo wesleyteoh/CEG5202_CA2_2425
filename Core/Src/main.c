@@ -85,9 +85,9 @@ typedef struct {
 /* USER CODE BEGIN PD */
 
 // Threshold definitions
-#define HIGH_TEMP_THRESHOLD    24.0f    // High temp threshold in degC default 27
+#define HIGH_TEMP_THRESHOLD    32.0f    // High temp threshold in degC default 27
 #define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
-#define HIGH_HUMIDITY_THRESHOLD 70.0f	// Humidity high threshold in %, set at 101 to disable, 70 as spec
+#define HIGH_HUMIDITY_THRESHOLD 101.0f	// Humidity high threshold in %, set at 101 to disable, 70 as spec
 #define VIBRATION_THRESHOLD    11.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
 
 
@@ -529,24 +529,24 @@ int main(void)
 		         uint32_t alertTime = HAL_GetTick();
 		         uint32_t sensorDelay = alertTime - sensorReadTime;
 		         uint32_t responseDelay = sensorDelay;  // Modify if response time is measured differently
-		         printf("** Alert: High temperature alert: %f C. Sensor delay: %lu ms, Response delay: %lu ms. Activating cooler **\r\n",
-		                 newTemp, sensorDelay, responseDelay);
+		         printf("** Alert: %lu High temperature alert: %f C. Sensor delay: %lu ms, Response delay: %lu ms. Activating cooler **\r\n",
+		        		 alertTime,newTemp, sensorDelay, responseDelay);
 		    }
 		    if (newHumidity < LOW_HUMIDITY_THRESHOLD)
 		    {
 		         uint32_t alertTime = HAL_GetTick();
 		         uint32_t sensorDelay = alertTime - sensorReadTime;
 		         uint32_t responseDelay = sensorDelay;
-		         printf("** Alert: Low humidity alert: %f%%! Sensor delay: %lu ms, Response delay: %lu ms. Activating Humidifier. **\r\n",
-		                 newHumidity, sensorDelay, responseDelay);
+		         printf("** Alert: %lu Low humidity alert: %f%%! Sensor delay: %lu ms, Response delay: %lu ms. Activating Humidifier. **\r\n",
+		        		 alertTime, newHumidity, sensorDelay, responseDelay);
 		    }
 		    if (newHumidity > HIGH_HUMIDITY_THRESHOLD)
 		    {
 		         uint32_t alertTime = HAL_GetTick();
 		         uint32_t sensorDelay = alertTime - sensorReadTime;
 		         uint32_t responseDelay = sensorDelay;
-		         printf("** Alert: High humidity alert: %f%%. Sensor delay: %lu ms, Response delay: %lu ms **\r\n",
-		                 newHumidity, sensorDelay, responseDelay);
+		         printf("** Alert: %lu High humidity alert: %f%%. Sensor delay: %lu ms, Response delay: %lu ms **\r\n",
+		        		 alertTime, newHumidity, sensorDelay, responseDelay);
 		    }
 		}
 
@@ -583,7 +583,7 @@ int main(void)
 		         uint32_t alertTime = HAL_GetTick();
 		         uint32_t sensorDelay = alertTime - accelSensorTime;
 		         uint32_t responseDelay = sensorDelay;
-		         printf("** Alert: Vibration warning! Sensor delay: %lu ms, Response delay: %lu ms **\r\n", sensorDelay, responseDelay);
+		         printf("** Alert: %lu Vibration warning! Sensor delay: %lu ms, Response delay: %lu ms **\r\n", alertTime, sensorDelay, responseDelay);
 		         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
 		         HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
 		         criticalEventFlag = 1;
