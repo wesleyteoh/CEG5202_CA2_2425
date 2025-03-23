@@ -153,7 +153,7 @@ def parse_line(line):
             'message': line.strip()
         }
     else:
-        # Expected format: sensor,timestamp,value1,value2,...
+        # Expected format: sensor,timestamp,value1,value2,value3
         parts = line.split(',')
         try:
             raw_timestamp = parts[0].strip()
@@ -183,8 +183,8 @@ for sensor in sensors:
         sensor_data[sensor] = []
         sensor_time[sensor] = []
 
-# ----- Matplotlib setup -----
-fig, axs = plt.subplots(len(sensors), 1, sharex=True, figsize=(12, 8))
+# ===== Matplotlib setup =====
+fig, axs = plt.subplots(len(sensors), 1, sharex=True, figsize=(15, 8))
 fig.suptitle("Real-time Sensor Data")
 lines = {}
 loss_text = {}
