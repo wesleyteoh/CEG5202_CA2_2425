@@ -9,6 +9,7 @@ import re
 from datetime import datetime, timedelta
 
 SERIAL_PORT = '/dev/cu.usbmodem103'  
+# SERIAL_PORT = 'COM3'
 BAUD_RATE = 115200
 CSV_FILENAME = 'STM32_data.csv'
 ALERT_LOG_FILENAME = 'alert_log.txt'
