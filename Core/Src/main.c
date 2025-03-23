@@ -103,7 +103,7 @@ typedef struct {
 /* USER CODE BEGIN PD */
 
 // Threshold definitions
-#define HIGH_TEMP_THRESHOLD    33.0f    // High temp threshold in degC default 27
+#define HIGH_TEMP_THRESHOLD    27.0f    // High temp threshold in degC default 27
 #define LOW_HUMIDITY_THRESHOLD 30.0f    // Humidity low threshold in %
 #define HIGH_HUMIDITY_THRESHOLD 101.0f	// Humidity high threshold in %, set at 101 to disable, 70 as spec
 #define VIBRATION_THRESHOLD_X    2.0f     // 1 m/s^2 is default threadhold. Using 11 for testing purposes.
@@ -183,7 +183,7 @@ static uint32_t  pressureTimestamps[PRESSURE_BUFFER_CAPACITY];
 static Vector3   accelData[ACCEL_BUFFER_CAPACITY];
 static uint32_t  accelTimestamps[ACCEL_BUFFER_CAPACITY];
 
-// Gyro data and timestamps arrays.
+// Gyroscope
 static Vector3 gyroData[GYRO_BUFFER_CAPACITY];
 static uint32_t gyroTimestamps[GYRO_BUFFER_CAPACITY];
 
@@ -205,7 +205,7 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	}
 }
 
-// FIFO push functions: they return -1 if the FIFO is full
+// FIFO push functions, return -1 if the FIFO is full
 int pushFIFO_Float(FIFO_Float *fifo, float value)
 {
     // Check if full
@@ -233,7 +233,7 @@ int popFIFO_Float(FIFO_Float *fifo, float *value, uint32_t *timestamp)
     return 0;
 }
 
-// Same idea for vectors:
+// Same idea for vectors, they return -1 if the FIFO is full
 int pushFIFO_Vector(FIFO_Vector *fifo, Vector3 value)
 {
     if (fifo->count >= fifo->capacity) {
@@ -276,8 +276,6 @@ void transmitEntireFIFO_Vector(FIFO_Vector *fifo, const char *sensorName) {
         printf("%s,%lu,%f,%f,%f\r\n", sensorName, timestamp, value.x, value.y, value.z);
     }
 }
-
-
 
 
 extern void initialise_monitor_handles(void);
@@ -351,7 +349,7 @@ void transmitRandomBuffer(void) {
 
 float getFIFO_timeToFillFloat(FIFO_Float *fifo) {
     if (fifo->count == 0) {
-        return -1.0f; // Empty
+        return -1.0f;
     }
     // Use (HAL_GetTick() - fifo->timestamp[fifo->tail]) and fifo->count
     // to estimate average time between samples.
@@ -360,13 +358,13 @@ float getFIFO_timeToFillFloat(FIFO_Float *fifo) {
     // Get remaining unoccupied slots from this FIFO’s capacity
     uint16_t remainingCapacity = fifo->capacity - fifo->count;
 
-    // Time to fill the remaining slots = remaining slots * average time per sample,
+    // Time to fill the remaining slots = remaining slots * average time per sample
     return remainingCapacity / inputRate;
 }
 
 float getFIFO_timeToFillVector(FIFO_Vector *fifo) {
     if (fifo->count == 0) {
-        return -1.0f; // Empty
+        return -1.0f;
     }
     float inputRate = (HAL_GetTick() - fifo->timestamp[fifo->tail]) / (float)fifo->count;
     uint16_t remainingCapacity = fifo->capacity - fifo->count;
@@ -548,7 +546,6 @@ int main(void)
   fifoMagneto.capacity  = MAG_BUFFER_CAPACITY;
   fifoMagneto.head = fifoMagneto.tail = fifoMagneto.count = 0;
 
-//  HAL_Delay(100);
   srand(HAL_GetTick());// Seed RNG
 
 
@@ -623,20 +620,22 @@ int main(void)
 		    if (pushFIFO_Float(&fifoHumidity, newHumidity) != 0)
 		         printf("Humidity FIFO full, discarding reading.\r\n");
 
-		    // Alert conditions with delay logging:
 		    if (newTemp > HIGH_TEMP_THRESHOLD)
 		    {
 		         uint32_t alertTime = HAL_GetTick();
 		         uint32_t sensorDelay = alertTime - sensorReadTime + randPollDelay;
-		         uint32_t responseDelay = sensorDelay;  // Modify if response time is measured differently
+		         uint32_t responseDelay = sensorDelay;
+		         // Activate and confirm cooler actuator, else report failure
 		         printf("** Alert: %lu High temperature alert: %f C. Sensor delay: %lu ms, Response delay: %lu ms. Activating cooler **\r\n",
 		        		 alertTime,newTemp, sensorDelay, responseDelay);
 		    }
+
 		    if (newHumidity < LOW_HUMIDITY_THRESHOLD)
 		    {
 		         uint32_t alertTime = HAL_GetTick();
 		         uint32_t sensorDelay = alertTime - sensorReadTime + randPollDelay;
 		         uint32_t responseDelay = sensorDelay;
+		         // Activate and confirm humidifier actuator, else report failure
 		         printf("** Alert: %lu Low humidity alert: %f%%! Sensor delay: %lu ms, Response delay: %lu ms. Activating Humidifier. **\r\n",
 		        		 alertTime, newHumidity, sensorDelay, responseDelay);
 		    }
@@ -645,6 +644,7 @@ int main(void)
 		         uint32_t alertTime = HAL_GetTick();
 		         uint32_t sensorDelay = alertTime - sensorReadTime + randPollDelay;
 		         uint32_t responseDelay = sensorDelay;
+		         // Activate and confirm dehumidifier actuator, else report failure
 		         printf("** Alert: %lu High humidity alert: %f%%. Sensor delay: %lu ms, Response delay: %lu ms **\r\n",
 		        		 alertTime, newHumidity, sensorDelay, responseDelay);
 		    }
@@ -1330,7 +1330,6 @@ void HandleCriticalEvent(void)
           HAL_Delay(100);  // short delay
           HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
           HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_9);
-//          HAL_Delay(100);
       }
       HAL_Delay(1000);
       // Re-read accelerometer data to check vibration levels

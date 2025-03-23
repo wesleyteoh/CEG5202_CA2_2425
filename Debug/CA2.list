@@ -37,11 +37,11 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  0002b227  00000000  00000000  0003086d  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   0001f5c7  00000000  00000000  0005ba94  2**0
+ 17 .debug_line   0001f5c5  00000000  00000000  0005ba94  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    000fb952  00000000  00000000  0007b05b  2**0
+ 18 .debug_str    000fb952  00000000  00000000  0007b059  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  001769ad  2**0
+ 19 .comment      00000043  00000000  00000000  001769ab  2**0
                   CONTENTS, READONLY
  20 .debug_frame  00007df8  00000000  00000000  001769f0  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -2944,7 +2944,6 @@ int main(void)
  8001b7c:	485b      	ldr	r0, [pc, #364]	@ (8001cec <main+0x4bc>)
  8001b7e:	f007 fbe5 	bl	800934c <puts>
 
-		    // Alert conditions with delay logging:
 		    if (newTemp > HIGH_TEMP_THRESHOLD)
  8001b82:	edd7 7a39 	vldr	s15, [r7, #228]	@ 0xe4
  8001b86:	ed9f 7a5a 	vldr	s14, [pc, #360]	@ 8001cf0 <main+0x4c0>
@@ -2962,9 +2961,10 @@ int main(void)
  8001ba6:	f8d7 30f8 	ldr.w	r3, [r7, #248]	@ 0xf8
  8001baa:	4413      	add	r3, r2
  8001bac:	f8c7 30dc 	str.w	r3, [r7, #220]	@ 0xdc
-		         uint32_t responseDelay = sensorDelay;  // Modify if response time is measured differently
+		         uint32_t responseDelay = sensorDelay;
  8001bb0:	f8d7 30dc 	ldr.w	r3, [r7, #220]	@ 0xdc
  8001bb4:	f8c7 30d8 	str.w	r3, [r7, #216]	@ 0xd8
+		         // Activate and confirm cooler actuator, else report failure
 		         printf("** Alert: %lu High temperature alert: %f C. Sensor delay: %lu ms, Response delay: %lu ms. Activating cooler **\r\n",
  8001bb8:	f8d7 00e4 	ldr.w	r0, [r7, #228]	@ 0xe4
  8001bbc:	f7fe fcd4 	bl	8000568 <__aeabi_f2d>
@@ -2979,6 +2979,7 @@ int main(void)
  8001bd6:	f007 fb51 	bl	800927c <iprintf>
 		        		 alertTime,newTemp, sensorDelay, responseDelay);
 		    }
+
 		    if (newHumidity < LOW_HUMIDITY_THRESHOLD)
  8001bda:	edd7 7a49 	vldr	s15, [r7, #292]	@ 0x124
  8001bde:	eeb3 7a0e 	vmov.f32	s14, #62	@ 0x41f00000  30.0
@@ -2999,6 +3000,7 @@ int main(void)
 		         uint32_t responseDelay = sensorDelay;
  8001c08:	f8d7 30d0 	ldr.w	r3, [r7, #208]	@ 0xd0
  8001c0c:	f8c7 30cc 	str.w	r3, [r7, #204]	@ 0xcc
+		         // Activate and confirm humidifier actuator, else report failure
 		         printf("** Alert: %lu Low humidity alert: %f%%! Sensor delay: %lu ms, Response delay: %lu ms. Activating Humidifier. **\r\n",
  8001c10:	f8d7 0124 	ldr.w	r0, [r7, #292]	@ 0x124
  8001c14:	f7fe fca8 	bl	8000568 <__aeabi_f2d>
@@ -3033,6 +3035,7 @@ int main(void)
 		         uint32_t responseDelay = sensorDelay;
  8001c60:	f8d7 30c4 	ldr.w	r3, [r7, #196]	@ 0xc4
  8001c64:	f8c7 30c0 	str.w	r3, [r7, #192]	@ 0xc0
+		         // Activate and confirm dehumidifier actuator, else report failure
 		         printf("** Alert: %lu High humidity alert: %f%%. Sensor delay: %lu ms, Response delay: %lu ms **\r\n",
  8001c68:	f8d7 0124 	ldr.w	r0, [r7, #292]	@ 0x124
  8001c6c:	f7fe fc7c 	bl	8000568 <__aeabi_f2d>
@@ -3094,7 +3097,7 @@ int main(void)
  8001ce4:	0800b370 	.word	0x0800b370
  8001ce8:	200009f8 	.word	0x200009f8
  8001cec:	0800b39c 	.word	0x0800b39c
- 8001cf0:	42040000 	.word	0x42040000
+ 8001cf0:	42080000 	.word	0x42080000
  8001cf4:	0800b3c8 	.word	0x0800b3c8
  8001cf8:	0800b43c 	.word	0x0800b43c
  8001cfc:	42ca0000 	.word	0x42ca0000
@@ -4941,7 +4944,6 @@ void HandleCriticalEvent(void)
  8002976:	697b      	ldr	r3, [r7, #20]
  8002978:	2b04      	cmp	r3, #4
  800297a:	dde2      	ble.n	8002942 <HandleCriticalEvent+0x12>
-//          HAL_Delay(100);
       }
       HAL_Delay(1000);
  800297c:	f44f 707a 	mov.w	r0, #1000	@ 0x3e8
