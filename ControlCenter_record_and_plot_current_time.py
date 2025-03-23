@@ -13,7 +13,6 @@ BAUD_RATE = 115200
 CSV_FILENAME = 'STM32_data.csv'
 ALERT_LOG_FILENAME = 'alert_log.txt'
 
-# Updated sensor list includes gyroscope
 sensors = ['temperature', 'humidity', 'pressure', 'magnetometer', 'accelerometer', 'gyroscope']
 
 data_lines = []
@@ -172,8 +171,8 @@ def parse_line(line):
         except (ValueError, IndexError):
             return {'type': 'event', 'message': line.strip()}
 
-# Initialize sensor data and time dictionaries.
-# For 3-axis sensors, store data as dicts with keys "x", "y", and "z".
+# Initialize sensor data and time dictionaries
+# For 3-axis sensors, store data as dicts with keys "x", "y", and "z"
 sensor_data = {}
 sensor_time = {}
 for sensor in sensors:
@@ -190,7 +189,7 @@ fig.suptitle("Real-time Sensor Data")
 lines = {}
 loss_text = {}
 
-TIME_WINDOW = 100  # seconds
+TIME_WINDOW = 100  # in seconds
 
 for i, sensor in enumerate(sensors):
     ax = axs[i]
@@ -250,11 +249,11 @@ def update_plot(frame):
         elif parsed['type'] == 'event':
             print(f"[EVENT] {parsed['message']}")
 
-    # Remove old alert events.
+    # Remove old alert events
     cutoff = datetime.now() - timedelta(seconds=TIME_WINDOW)
     alert_events[:] = [event for event in alert_events if event['timestamp'] >= cutoff]
 
-    # Update sensor plots.
+    # Update sensor plots
     for sensor in sensors:
         ax = axs[sensors.index(sensor)]
         if sensor in ["accelerometer", "gyroscope"]:
@@ -285,7 +284,7 @@ def update_plot(frame):
         total = stats['accepted'] + stats['lost'] or 1
         loss_text[sensor].set_text(f"Loss: {stats['lost'] / total * 100:.1f}%")
         
-    # Mark vibration alerts on the accelerometer plot.
+    # Mark vibration alerts on the accelerometer plot
     for event in alert_events:
         if event.get('alert_type') == 'vibration':
             ax_acc = axs[sensors.index('accelerometer')]
@@ -309,7 +308,7 @@ def update_plot(frame):
                 marker = ax_acc.plot(event['timestamp'], y_val, 'ro', markersize=8)[0]
                 alert_markers.append(marker)
         
-    # Return all plotted objects.
+    # Return all plotted objects
     all_lines = []
     for sensor_val in lines.values():
         if isinstance(sensor_val, tuple):
